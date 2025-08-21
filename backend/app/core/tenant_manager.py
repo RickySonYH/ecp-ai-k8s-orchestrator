@@ -502,8 +502,24 @@ class TenantManager:
         
         # GPUType과 PresetType enum으로 변환
         from app.models.tenant_specs import GPUType, PresetType
-        gpu_type_enum = GPUType(optimal_gpu_type)
-        preset_enum = PresetType(preset)
+        
+        logger.info(
+            "Enum 변환 전 값들",
+            optimal_gpu_type=optimal_gpu_type,
+            preset=preset,
+            optimal_gpu_type_type=type(optimal_gpu_type),
+            preset_type=type(preset)
+        )
+        
+        try:
+            gpu_type_enum = GPUType(optimal_gpu_type)
+            preset_enum = PresetType(preset)
+            logger.info("Enum 변환 성공", gpu_type_enum=gpu_type_enum, preset_enum=preset_enum)
+        except Exception as e:
+            logger.error("Enum 변환 실패", error=str(e), optimal_gpu_type=optimal_gpu_type, preset=preset)
+            # 기본값으로 설정
+            gpu_type_enum = GPUType.T4
+            preset_enum = PresetType.MICRO
         
         tenant_specs = TenantSpecs(
             tenant_id=tenant_id,

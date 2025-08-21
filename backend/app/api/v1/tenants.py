@@ -564,7 +564,7 @@ async def generate_tenant_manifests(
             "manifests": manifests,
             "manifest_count": len(manifests),
             "estimated_resources": {
-                "gpu_type": tenant_specs.gpu_type.value,
+                "gpu_type": tenant_specs.gpu_type.value if hasattr(tenant_specs.gpu_type, 'value') else str(tenant_specs.gpu_type),
                 "gpu_count": tenant_specs.gpu_count,
                 "cpu_cores": tenant_specs.cpu_cores
             }

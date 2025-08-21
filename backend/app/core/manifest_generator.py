@@ -129,9 +129,13 @@ class ManifestGenerator:
             except Exception as e:
                 logger.warning("테넌시 사양 JSON 생성 실패", error=str(e))
                 # 기본 정보만 포함
+                # gpu_type과 preset을 안전하게 처리
+                gpu_type_str = tenant_specs.gpu_type.value if hasattr(tenant_specs.gpu_type, 'value') else str(tenant_specs.gpu_type)
+                preset_str = tenant_specs.preset.value if hasattr(tenant_specs.preset, 'value') else str(tenant_specs.preset)
+                
                 basic_specs = {
                     "tenant_id": tenant_specs.tenant_id,
-                    "preset": tenant_specs.preset,
+                    "preset": preset_str,
                     "services": ["callbot", "chatbot", "advisor", "stt", "tts", "ta", "qa"]
                 }
                 specs_json = json.dumps(basic_specs, indent=2, ensure_ascii=False)
@@ -157,7 +161,13 @@ class ManifestGenerator:
             
             # GPU 할당 정보 (새로운 TenantSpecs 모델 기반)
             has_gpu = service_name in ["tts", "nlp", "aicm"] and tenant_specs.gpu_count > 0
-            gpu_type = tenant_specs.gpu_type.value if has_gpu else "t4"
+            
+            # gpu_type이 enum인지 확인하고 안전하게 처리
+            if hasattr(tenant_specs.gpu_type, 'value'):
+                gpu_type = tenant_specs.gpu_type.value
+            else:
+                gpu_type = str(tenant_specs.gpu_type)
+            
             gpu_count = 1 if has_gpu else 0
             
             # 기본 container_specs 설정
@@ -216,7 +226,12 @@ spec:
     spec:"""
 
         if has_gpu:
-            gpu_type = tenant_specs.gpu_type.value
+            # gpu_type이 enum인지 확인하고 안전하게 처리
+            if hasattr(tenant_specs.gpu_type, 'value'):
+                gpu_type = tenant_specs.gpu_type.value
+            else:
+                gpu_type = str(tenant_specs.gpu_type)
+                
             basic_deployment += f"""
       nodeSelector:
         accelerator: nvidia-{gpu_type}
@@ -346,6 +361,9 @@ spec:
             )
         except Exception as e:
             logger.error("ConfigMap 매니페스트 생성 실패", error=str(e))
+            # gpu_type과 preset을 안전하게 처리
+            gpu_type_str = tenant_specs.gpu_type.value if hasattr(tenant_specs.gpu_type, 'value') else str(tenant_specs.gpu_type)
+            preset_str = tenant_specs.preset.value if hasattr(tenant_specs.preset, 'value') else str(tenant_specs.preset)
             # 기본 ConfigMap 반환
             return f"""---
 apiVersion: v1
@@ -358,10 +376,10 @@ metadata:
 data:
   tenant-config.yaml: |
     tenantId: {tenant_specs.tenant_id}
-    preset: {tenant_specs.preset}
+    preset: {preset_str}
     services: {{}}
     resources:
-      gpu_type: {tenant_specs.gpu_type.value}
+      gpu_type: {gpu_type_str}
       auto_scaling: true
 """
     
@@ -407,14 +425,18 @@ data:
     
     def _generate_deploy_script(self, tenant_specs: TenantSpecs) -> str:
         """배포 스크립트 생성"""
+        # gpu_type과 preset을 안전하게 처리
+        gpu_type_str = tenant_specs.gpu_type.value if hasattr(tenant_specs.gpu_type, 'value') else str(tenant_specs.gpu_type)
+        preset_str = tenant_specs.preset.value if hasattr(tenant_specs.preset, 'value') else str(tenant_specs.preset)
+        
         return f"""#!/bin/bash
 # [advice from AI] ECP-AI 테넌시 '{tenant_specs.tenant_id}' 배포 스크립트
 
 set -e
 
 echo "🚀 ECP-AI 테넌시 '{tenant_specs.tenant_id}' 배포 시작"
-echo "프리셋: {tenant_specs.preset}"
-echo "GPU 타입: {tenant_specs.gpu_type.value}"
+echo "프리셋: {preset_str}"
+echo "GPU 타입: {gpu_type_str}"
 echo "예상 리소스: GPU {tenant_specs.gpu_count}개, CPU {tenant_specs.cpu_cores}코어"
 echo ""
 
@@ -507,13 +529,17 @@ echo "  kubectl get namespaces | grep {tenant_specs.tenant_id}"
             for name in basic_services
         ])
         
+        # gpu_type과 preset을 안전하게 처리
+        gpu_type_str = tenant_specs.gpu_type.value if hasattr(tenant_specs.gpu_type, 'value') else str(tenant_specs.gpu_type)
+        preset_str = tenant_specs.preset.value if hasattr(tenant_specs.preset, 'value') else str(tenant_specs.preset)
+        
         return f"""# ECP-AI 테넌시: {tenant_specs.tenant_id}
 
 ## 📋 테넌시 정보
 
 - **테넌시 ID**: {tenant_specs.tenant_id}
-- **프리셋**: {tenant_specs.preset}
-- **GPU 타입**: {tenant_specs.gpu_type.value}
+- **프리셋**: {preset_str}
+- **GPU 타입**: {gpu_type_str}
 - **예상 리소스**: GPU {tenant_specs.gpu_count}개, CPU {tenant_specs.cpu_cores}코어
 
 ## 🛠️ 서비스 구성
@@ -570,7 +596,7 @@ kubectl delete namespace {tenant_specs.tenant_id}-ecp-ai
 ## 📊 예상 리소스 사용량
 
 ### GPU 요구사항
-- **GPU 타입**: {tenant_specs.gpu_type.value}
+- **GPU 타입**: {gpu_type_str}
 - **GPU 개수**: {tenant_specs.gpu_count}개
 - **GPU 메모리**: {tenant_specs.memory_gb}GB
 
@@ -805,7 +831,7 @@ data:
         enabled: true
         count: 1
     resources:
-      gpu_type: {{ tenant_specs.gpu_type.value }}
+      gpu_type: {{ tenant_specs.gpu_type.value if tenant_specs.gpu_type.value is defined else tenant_specs.gpu_type }}
       gpu_count: {{ tenant_specs.gpu_count }}
       cpu_cores: {{ tenant_specs.cpu_cores }}
     sla:
