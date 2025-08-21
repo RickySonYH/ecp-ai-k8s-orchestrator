@@ -578,27 +578,6 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
             </Collapse>
           </Alert>
 
-          {/* 하드웨어 스펙 계산 결과 */}
-          <ServiceSection>
-            <Box display="flex" justifyContent="space-between" alignItems="center" onClick={() => setShowHardwareSpec(!showHardwareSpec)} sx={{ cursor: 'pointer' }}>
-              <Typography variant="h6">
-                💻 권장 하드웨어 구성 (가중치 데이터 기반)
-              </Typography>
-              <IconButton size="small">
-                {showHardwareSpec ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-              </IconButton>
-            </Box>
-            
-            <Collapse in={showHardwareSpec}>
-              <Box sx={{ mt: 2 }}>
-                <HardwareSpecCalculator 
-                  serviceRequirements={services}
-                  gpuType={gpuType}
-                />
-              </Box>
-            </Collapse>
-          </ServiceSection>
-
           {/* 생성 버튼 */}
           <Box sx={{ mt: 4, textAlign: 'center' }}>
             <Button
@@ -626,6 +605,27 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
               위 설정을 기반으로 Kubernetes 환경을 자동으로 구성합니다
             </Typography>
           </Box>
+
+          {/* 권장 하드웨어 구성 (테넌시 생성 버튼 아래로 이동) */}
+          <ServiceSection sx={{ mt: 3 }}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" onClick={() => setShowHardwareSpec(!showHardwareSpec)} sx={{ cursor: 'pointer' }}>
+              <Typography variant="h6">
+                💻 권장 하드웨어 구성 (가중치 데이터 기반)
+              </Typography>
+              <IconButton size="small">
+                {showHardwareSpec ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+              </IconButton>
+            </Box>
+            
+            <Collapse in={showHardwareSpec}>
+              <Box sx={{ mt: 2 }}>
+                <HardwareSpecCalculator 
+                  serviceRequirements={services}
+                  gpuType={gpuType}
+                />
+              </Box>
+            </Collapse>
+          </ServiceSection>
 
           {/* 생성 중 추가 정보 */}
           {loading && (

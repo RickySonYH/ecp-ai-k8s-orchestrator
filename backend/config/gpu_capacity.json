@@ -1,0 +1,134 @@
+{
+  "version": "2.0",
+  "last_updated": "2024-12-01",
+  "gpu_capacity": {
+    "t4": {
+      "specs": {
+        "memory_gb": 16,
+        "cuda_cores": 2560,
+        "tensor_cores": 320,
+        "power_watts": 70,
+        "recommended_per_server": 4,
+        "cpu_cores": 16,
+        "ram_gb": 16
+      },
+      "processing_capacity": {
+        "tts": {
+          "base_channels": 10,
+          "with_cache_optimization": 50,
+          "cache_efficiency": 0.3,
+          "unit": "channels_per_gpu",
+          "notes": "캐시서버 30% 효율 적용, 콜봇 전용"
+        },
+        "nlp": {
+          "queries_per_second": 150,
+          "response_time_ms": 60,
+          "batch_size": 32,
+          "unit": "queries_per_second",
+          "notes": "의도/형태소/개체명 처리"
+        },
+        "aicm": {
+          "vector_searches_per_second": 100,
+          "embedding_generation": 50,
+          "target_latency_ms": 200,
+          "unit": "operations_per_second",
+          "notes": "RAG 검색 및 임베딩"
+        }
+      }
+    },
+    "v100": {
+      "specs": {
+        "memory_gb": 32,
+        "cuda_cores": 5120,
+        "tensor_cores": 640,
+        "power_watts": 300,
+        "recommended_per_server": 2,
+        "cpu_cores": 32,
+        "ram_gb": 32
+      },
+      "processing_capacity": {
+        "tts": {
+          "base_channels": 30,
+          "with_cache_optimization": 150,
+          "cache_efficiency": 0.3,
+          "unit": "channels_per_gpu",
+          "notes": "T4 대비 3배 성능"
+        },
+        "nlp": {
+          "queries_per_second": 450,
+          "response_time_ms": 45,
+          "batch_size": 64,
+          "unit": "queries_per_second",
+          "notes": "T4 대비 3배 성능"
+        },
+        "aicm": {
+          "vector_searches_per_second": 300,
+          "embedding_generation": 150,
+          "target_latency_ms": 150,
+          "unit": "operations_per_second",
+          "notes": "T4 대비 3배 성능"
+        }
+      }
+    },
+    "l40s": {
+      "specs": {
+        "memory_gb": 48,
+        "cuda_cores": 18176,
+        "tensor_cores": 568,
+        "rt_cores": 142,
+        "power_watts": 300,
+        "recommended_per_server": 2,
+        "cpu_cores": 32,
+        "ram_gb": 48
+      },
+      "processing_capacity": {
+        "tts": {
+          "base_channels": 40,
+          "with_cache_optimization": 200,
+          "cache_efficiency": 0.3,
+          "unit": "channels_per_gpu",
+          "notes": "V100 대비 33% 향상"
+        },
+        "nlp": {
+          "queries_per_second": 600,
+          "response_time_ms": 40,
+          "batch_size": 96,
+          "unit": "queries_per_second",
+          "notes": "V100 대비 33% 향상"
+        },
+        "aicm": {
+          "vector_searches_per_second": 400,
+          "embedding_generation": 200,
+          "target_latency_ms": 120,
+          "unit": "operations_per_second",
+          "notes": "V100 대비 33% 향상, 48GB 메모리"
+        }
+      }
+    }
+  },
+  "cpu_capacity": {
+    "stt": {
+      "channels_per_core": 6.5,
+      "notes": "실시간 STT 처리 기준 (업데이트됨)"
+    },
+    "ta": {
+      "processing_rate": "150 lines/minute",
+      "channels_per_core": 1,
+      "batch_processing": false,
+      "real_time_processing": true,
+      "memory_per_core_gb": 4,
+      "notes": "실시간 처리, 1채널당 1통화(50문장)를 1분 이내 처리, 동시 처리 확률 고려하여 효율적 리소스 할당"
+    },
+    "qa": {
+      "channels_per_core": 50,
+      "external_llm_dependency": true,
+      "notes": "외부 LLM 사용, 내부 GPU 부하 최소"
+    },
+    "infrastructure": {
+      "nginx_cpu_per_1000_concurrent": 2,
+      "gateway_cpu_per_1000_requests": 4,
+      "db_cpu_base": 8,
+      "auth_cpu_base": 3
+    }
+  }
+}

@@ -1,0 +1,125 @@
+{
+  "version": "2.0",
+  "last_updated": "2024-12-01",
+  "infrastructure": {
+    "base_requirements": {
+      "nginx": {
+        "cpu_cores": 2,
+        "ram_gb": 4,
+        "storage_gb": 20,
+        "scaling_factor": 0.02,
+        "notes": "웹서버 및 로드밸런서"
+      },
+      "gateway": {
+        "cpu_cores": 4,
+        "ram_gb": 8,
+        "storage_gb": 50,
+        "scaling_factor": 0.03,
+        "notes": "API Gateway (Kong/Spring)"
+      },
+      "database": {
+        "cpu_cores": 8,
+        "ram_gb": 32,
+        "storage_gb": 100,
+        "scaling_factor": 0.05,
+        "notes": "메인 데이터베이스"
+      },
+      "vector_db": {
+        "cpu_cores": 6,
+        "ram_gb": 64,
+        "storage_gb": 200,
+        "scaling_factor": 0.04,
+        "notes": "벡터 데이터베이스 (ChromaDB)"
+      },
+      "auth_service": {
+        "cpu_cores": 3,
+        "ram_gb": 8,
+        "storage_gb": 30,
+        "scaling_factor": 0.02,
+        "notes": "권한 관리 서비스"
+      },
+      "ssl_certificate": {
+        "cpu_cores": 1,
+        "ram_gb": 2,
+        "storage_gb": 10,
+        "scaling_factor": 0.01,
+        "notes": "SSL 인증서 관리"
+      }
+    },
+    "network": {
+      "internal_bandwidth": "10Gbps",
+      "external_bandwidth": "1Gbps",
+      "load_balancer": {
+        "required": true,
+        "type": "HAProxy",
+        "cpu_cores": 2,
+        "ram_gb": 4
+      },
+      "firewall": {
+        "required": true,
+        "type": "iptables/ufw",
+        "cpu_cores": 1,
+        "ram_gb": 2
+      }
+    },
+    "monitoring": {
+      "prometheus": {
+        "cpu_cores": 1,
+        "ram_gb": 4,
+        "storage_gb": 50,
+        "notes": "메트릭 수집"
+      },
+      "grafana": {
+        "cpu_cores": 1,
+        "ram_gb": 2,
+        "storage_gb": 20,
+        "notes": "대시보드"
+      },
+      "alertmanager": {
+        "cpu_cores": 1,
+        "ram_gb": 2,
+        "storage_gb": 10,
+        "notes": "알림 관리"
+      }
+    },
+    "backup": {
+      "strategy": "daily_incremental",
+      "retention": "30_days",
+      "storage_gb": 1000,
+      "cpu_cores": 2,
+      "ram_gb": 8,
+      "notes": "자동 백업 시스템"
+    },
+    "security": {
+      "vpn": {
+        "required": true,
+        "cpu_cores": 1,
+        "ram_gb": 2,
+        "notes": "관리자 접근용"
+      },
+      "waf": {
+        "required": true,
+        "type": "ModSecurity",
+        "cpu_cores": 2,
+        "ram_gb": 4,
+        "notes": "웹 애플리케이션 방화벽"
+      }
+    }
+  },
+  "deployment": {
+    "containerization": {
+      "docker": true,
+      "kubernetes": false,
+      "notes": "Docker Compose 기반 배포"
+    },
+    "scaling": {
+      "auto_scaling": false,
+      "manual_scaling": true,
+      "notes": "수동 스케일링 권장"
+    },
+    "high_availability": {
+      "required": false,
+      "notes": "단일 서버 배포, 필요시 이중화"
+    }
+  }
+}

@@ -105,7 +105,7 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
       setError(null);
       
       try {
-        const response = await fetch(`/api/v1/tenants/hardware-calc/calculate-detailed-hardware`, {
+        const response = await fetch(`/api/v1/tenants/calculate-detailed-hardware`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

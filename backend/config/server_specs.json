@@ -1,0 +1,196 @@
+{
+  "gpu_servers": {
+    "aicm": {
+      "name": "AICM 벡터 검색 RAG 검색",
+      "cpu_cores": 16,
+      "ram_gb": 64,
+      "ebs_gb": 550,
+      "instance_storage_gb": 225,
+      "nas": "",
+      "gpu_type": "T4",
+      "gpu_ram_gb": 16,
+      "description": "벡터 데이터베이스 및 RAG 검색 전용"
+    },
+    "nlp": {
+      "name": "NLP",
+      "cpu_cores": 8,
+      "ram_gb": 32,
+      "ebs_gb": 550,
+      "instance_storage_gb": 225,
+      "nas": "",
+      "gpu_type": "T4",
+      "gpu_ram_gb": 16,
+      "description": "자연어 처리 전용"
+    },
+    "tts_callbot": {
+      "name": "TTS(콜봇)",
+      "cpu_cores": 16,
+      "ram_gb": 64,
+      "ebs_gb": 50,
+      "instance_storage_gb": 225,
+      "nas": "2T",
+      "gpu_type": "T4",
+      "gpu_ram_gb": 16,
+      "description": "콜봇 TTS 전용"
+    },
+    "tts_chatbot": {
+      "name": "TTS(챗봇)",
+      "cpu_cores": 8,
+      "ram_gb": 32,
+      "ebs_gb": 50,
+      "instance_storage_gb": 225,
+      "nas": "1T",
+      "gpu_type": "T4",
+      "gpu_ram_gb": 16,
+      "description": "챗봇 TTS 전용"
+    }
+  },
+  "cpu_servers": {
+    "stt": {
+      "name": "STT",
+      "cpu_cores": 8,
+      "ram_gb": 32,
+      "ebs_gb": 100,
+      "instance_storage_gb": 100,
+      "nas": "",
+      "gpu_type": "",
+      "gpu_ram_gb": "",
+      "description": "음성 인식 전용"
+    },
+    "ta": {
+      "name": "TA",
+      "cpu_cores": 1,
+      "ram_gb": 4,
+      "ebs_gb": 100,
+      "instance_storage_gb": 200,
+      "nas": "1T",
+      "gpu_type": "",
+      "gpu_ram_gb": "",
+      "description": "실시간 분석 전용 (1채널당 1통화 50문장을 1분 이내 처리, 동시 처리 확률 고려)"
+    },
+    "qa": {
+      "name": "QA",
+      "cpu_cores": 8,
+      "ram_gb": 32,
+      "ebs_gb": 200,
+      "instance_storage_gb": 100,
+      "nas": "",
+      "gpu_type": "",
+      "gpu_ram_gb": "",
+      "description": "외부 LLM 기반 품질 평가"
+    }
+  },
+  "infrastructure_servers": {
+    "postgresql": {
+      "name": "PostgreSQL",
+      "cpu_cores": 4,
+      "ram_gb": 16,
+      "ebs_gb": 100,
+      "instance_storage_gb": "",
+      "nas": "",
+      "gpu_type": "",
+      "gpu_ram_gb": "",
+      "description": "메인 데이터베이스 (동적 조정)",
+      "dynamic_adjustment": true
+    },
+    "documentdb": {
+      "name": "DocumentDB",
+      "cpu_cores": 8,
+      "ram_gb": 32,
+      "ebs_gb": 200,
+      "instance_storage_gb": "",
+      "nas": "",
+      "gpu_type": "",
+      "gpu_ram_gb": "",
+      "description": "문서 데이터베이스"
+    },
+    "elasticache": {
+      "name": "ElastiCache",
+      "cpu_cores": 4,
+      "ram_gb": 16,
+      "ebs_gb": "",
+      "instance_storage_gb": "",
+      "nas": "",
+      "gpu_type": "",
+      "gpu_ram_gb": "",
+      "description": "캐시 서버"
+    },
+    "s3": {
+      "name": "S3 (Object Storage)",
+      "cpu_cores": "",
+      "ram_gb": "",
+      "ebs_gb": "",
+      "instance_storage_gb": 2000,
+      "nas": "",
+      "gpu_type": "",
+      "gpu_ram_gb": "",
+      "description": "객체 스토리지"
+    },
+    "web_api": {
+      "name": "Web & API",
+      "cpu_cores": 4,
+      "ram_gb": 16,
+      "ebs_gb": 100,
+      "instance_storage_gb": 100,
+      "nas": "",
+      "gpu_type": "",
+      "gpu_ram_gb": "",
+      "description": "웹 서버 및 API 게이트웨이"
+    },
+    "api_gateway": {
+      "name": "API Gateway",
+      "cpu_cores": 2,
+      "ram_gb": 8,
+      "ebs_gb": 50,
+      "instance_storage_gb": 50,
+      "nas": "",
+      "gpu_type": "",
+      "gpu_ram_gb": "",
+      "description": "API 라우팅 및 인증"
+    },
+    "nginx": {
+      "name": "Nginx",
+      "cpu_cores": 2,
+      "ram_gb": 8,
+      "ebs_gb": 50,
+      "instance_storage_gb": 50,
+      "nas": "",
+      "gpu_type": "",
+      "gpu_ram_gb": "",
+      "description": "로드 밸런서 및 프록시"
+    },
+    "ssl": {
+      "name": "SSL",
+      "cpu_cores": 2,
+      "ram_gb": 8,
+      "ebs_gb": 50,
+      "instance_storage_gb": 50,
+      "nas": "",
+      "gpu_type": "",
+      "gpu_ram_gb": "",
+      "description": "SSL 인증서 관리"
+    },
+    "auth_service": {
+      "name": "Auth Service",
+      "cpu_cores": 4,
+      "ram_gb": 16,
+      "ebs_gb": 100,
+      "instance_storage_gb": 100,
+      "nas": "",
+      "gpu_type": "",
+      "gpu_ram_gb": "",
+      "description": "인증 및 권한 관리"
+    },
+    "vectordb": {
+      "name": "VectorDB",
+      "cpu_cores": 8,
+      "ram_gb": 32,
+      "ebs_gb": 500,
+      "instance_storage_gb": 1000,
+      "nas": "10T",
+      "gpu_type": "",
+      "gpu_ram_gb": "",
+      "description": "벡터 데이터베이스"
+    }
+  }
+}

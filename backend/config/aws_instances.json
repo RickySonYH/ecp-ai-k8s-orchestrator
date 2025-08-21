@@ -1,0 +1,378 @@
+{
+  "g4dn.xlarge": {
+    "vcpu": 4,
+    "memory_gb": 16,
+    "gpu_count": 1,
+    "gpu_type": "T4",
+    "monthly_cost_usd": 380.16,
+    "category": "GPU"
+  },
+  "g4dn.2xlarge": {
+    "vcpu": 8,
+    "memory_gb": 32,
+    "gpu_count": 1,
+    "gpu_type": "T4",
+    "monthly_cost_usd": 549.36,
+    "category": "GPU"
+  },
+  "g4dn.4xlarge": {
+    "vcpu": 16,
+    "memory_gb": 64,
+    "gpu_count": 1,
+    "gpu_type": "T4",
+    "monthly_cost_usd": 887.76,
+    "category": "GPU"
+  },
+  "g4dn.8xlarge": {
+    "vcpu": 32,
+    "memory_gb": 128,
+    "gpu_count": 1,
+    "gpu_type": "T4",
+    "monthly_cost_usd": 1564.56,
+    "category": "GPU"
+  },
+  "g4dn.12xlarge": {
+    "vcpu": 48,
+    "memory_gb": 192,
+    "gpu_count": 4,
+    "gpu_type": "T4",
+    "monthly_cost_usd": 2849.04,
+    "category": "GPU"
+  },
+  "g4dn.16xlarge": {
+    "vcpu": 64,
+    "memory_gb": 256,
+    "gpu_count": 1,
+    "gpu_type": "T4",
+    "monthly_cost_usd": 3129.12,
+    "category": "GPU"
+  },
+  "p3.2xlarge": {
+    "vcpu": 8,
+    "memory_gb": 61,
+    "gpu_count": 1,
+    "gpu_type": "V100",
+    "monthly_cost_usd": 2257.2,
+    "category": "GPU"
+  },
+  "p3.8xlarge": {
+    "vcpu": 32,
+    "memory_gb": 244,
+    "gpu_count": 4,
+    "gpu_type": "V100",
+    "monthly_cost_usd": 9028.8,
+    "category": "GPU"
+  },
+  "p3.16xlarge": {
+    "vcpu": 64,
+    "memory_gb": 488,
+    "gpu_count": 8,
+    "gpu_type": "V100",
+    "monthly_cost_usd": 18057.6,
+    "category": "GPU"
+  },
+  "g5.xlarge": {
+    "vcpu": 4,
+    "memory_gb": 16,
+    "gpu_count": 1,
+    "gpu_type": "A10G",
+    "monthly_cost_usd": 745.2,
+    "category": "GPU"
+  },
+  "g5.2xlarge": {
+    "vcpu": 8,
+    "memory_gb": 32,
+    "gpu_count": 1,
+    "gpu_type": "A10G",
+    "monthly_cost_usd": 1123.2,
+    "category": "GPU"
+  },
+  "g5.4xlarge": {
+    "vcpu": 16,
+    "memory_gb": 64,
+    "gpu_count": 1,
+    "gpu_type": "A10G",
+    "monthly_cost_usd": 1879.2,
+    "category": "GPU"
+  },
+  "g5.8xlarge": {
+    "vcpu": 32,
+    "memory_gb": 128,
+    "gpu_count": 1,
+    "gpu_type": "A10G",
+    "monthly_cost_usd": 3391.2,
+    "category": "GPU"
+  },
+  "g5.12xlarge": {
+    "vcpu": 48,
+    "memory_gb": 192,
+    "gpu_count": 4,
+    "gpu_type": "A10G",
+    "monthly_cost_usd": 6415.2,
+    "category": "GPU"
+  },
+  "g5.16xlarge": {
+    "vcpu": 64,
+    "memory_gb": 256,
+    "gpu_count": 1,
+    "gpu_type": "A10G",
+    "monthly_cost_usd": 6782.4,
+    "category": "GPU"
+  },
+  "m5a.large": {
+    "vcpu": 2,
+    "memory_gb": 8,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 67.32,
+    "category": "CPU"
+  },
+  "m5a.xlarge": {
+    "vcpu": 4,
+    "memory_gb": 16,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 134.64,
+    "category": "CPU"
+  },
+  "m5a.2xlarge": {
+    "vcpu": 8,
+    "memory_gb": 32,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 269.28,
+    "category": "CPU"
+  },
+  "m5a.4xlarge": {
+    "vcpu": 16,
+    "memory_gb": 64,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 538.56,
+    "category": "CPU"
+  },
+  "m5a.8xlarge": {
+    "vcpu": 32,
+    "memory_gb": 128,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 1077.12,
+    "category": "CPU"
+  },
+  "m5a.12xlarge": {
+    "vcpu": 48,
+    "memory_gb": 192,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 1615.68,
+    "category": "CPU"
+  },
+  "m5a.16xlarge": {
+    "vcpu": 64,
+    "memory_gb": 256,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 2154.24,
+    "category": "CPU"
+  },
+  "m5a.24xlarge": {
+    "vcpu": 96,
+    "memory_gb": 384,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 3231.36,
+    "category": "CPU"
+  },
+  "c5.large": {
+    "vcpu": 2,
+    "memory_gb": 4,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 63.36,
+    "category": "CPU"
+  },
+  "c5.xlarge": {
+    "vcpu": 4,
+    "memory_gb": 8,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 126.72,
+    "category": "CPU"
+  },
+  "c5.2xlarge": {
+    "vcpu": 8,
+    "memory_gb": 16,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 253.44,
+    "category": "CPU"
+  },
+  "c5.4xlarge": {
+    "vcpu": 16,
+    "memory_gb": 32,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 506.88,
+    "category": "CPU"
+  },
+  "c5.9xlarge": {
+    "vcpu": 36,
+    "memory_gb": 72,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 1140.48,
+    "category": "CPU"
+  },
+  "c5.12xlarge": {
+    "vcpu": 48,
+    "memory_gb": 96,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 1520.64,
+    "category": "CPU"
+  },
+  "c5.18xlarge": {
+    "vcpu": 72,
+    "memory_gb": 144,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 2280.96,
+    "category": "CPU"
+  },
+  "c5.24xlarge": {
+    "vcpu": 96,
+    "memory_gb": 192,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 3041.28,
+    "category": "CPU"
+  },
+  "r5.large": {
+    "vcpu": 2,
+    "memory_gb": 16,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 88.56,
+    "category": "Memory"
+  },
+  "r5.xlarge": {
+    "vcpu": 4,
+    "memory_gb": 32,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 177.12,
+    "category": "Memory"
+  },
+  "r5.2xlarge": {
+    "vcpu": 8,
+    "memory_gb": 64,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 354.24,
+    "category": "Memory"
+  },
+  "r5.4xlarge": {
+    "vcpu": 16,
+    "memory_gb": 128,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 708.48,
+    "category": "Memory"
+  },
+  "r5.8xlarge": {
+    "vcpu": 32,
+    "memory_gb": 256,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 1416.96,
+    "category": "Memory"
+  },
+  "r5.12xlarge": {
+    "vcpu": 48,
+    "memory_gb": 384,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 2125.44,
+    "category": "Memory"
+  },
+  "r5.16xlarge": {
+    "vcpu": 64,
+    "memory_gb": 512,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 2833.92,
+    "category": "Memory"
+  },
+  "r5.24xlarge": {
+    "vcpu": 96,
+    "memory_gb": 768,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 4250.88,
+    "category": "Memory"
+  },
+  "db.m5.large": {
+    "vcpu": 2,
+    "memory_gb": 8,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 101.52,
+    "category": "Database"
+  },
+  "db.m5.xlarge": {
+    "vcpu": 4,
+    "memory_gb": 16,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 203.04,
+    "category": "Database"
+  },
+  "db.m5.2xlarge": {
+    "vcpu": 8,
+    "memory_gb": 32,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 406.08,
+    "category": "Database"
+  },
+  "db.m5.4xlarge": {
+    "vcpu": 16,
+    "memory_gb": 64,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 812.16,
+    "category": "Database"
+  },
+  "db.m5.8xlarge": {
+    "vcpu": 32,
+    "memory_gb": 128,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 1624.32,
+    "category": "Database"
+  },
+  "db.m5.12xlarge": {
+    "vcpu": 48,
+    "memory_gb": 192,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 2436.48,
+    "category": "Database"
+  },
+  "db.m5.16xlarge": {
+    "vcpu": 64,
+    "memory_gb": 256,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 3248.64,
+    "category": "Database"
+  },
+  "db.m5.24xlarge": {
+    "vcpu": 96,
+    "memory_gb": 384,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_usd": 4872.96,
+    "category": "Database"
+  }
+}

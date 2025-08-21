@@ -27,7 +27,7 @@ from app.models.tenant_specs import (
     PresetType, GPUType, EnvironmentVariable, VolumeMount,
     HealthCheckConfig, NetworkConfig
 )
-# from app.core.legacy_calculator_adapter import LegacyCalculatorAdapter  # 임시 비활성화
+from app.core.ecp_calculator_adapter import ECPCalculatorAdapter
 
 logger = structlog.get_logger(__name__)
 
@@ -713,8 +713,116 @@ async def validate_deployment(
         )
 
 
-# 기존 계산 엔진 API들 - 임시 비활성화 (모듈 경로 문제로)
-# TODO: models/ 디렉토리를 Docker 컨테이너에 마운트한 후 활성화
+# ==========================================
+# ECP 계산 엔진 API 엔드포인트
+# ==========================================
+
+@router.post("/calculate-detailed-hardware")
+async def calculate_detailed_hardware(
+    service_requirements: ServiceRequirements,
+    gpu_type: str = "t4"
+) -> Dict[str, Any]:
+    """
+    상세 하드웨어 사양 계산 (ECP 계산 엔진 사용)
+    """
+    try:
+        logger.info("상세 하드웨어 계산 요청", 
+                   service_requirements=service_requirements.model_dump(), 
+                   gpu_type=gpu_type)
+        
+        # ECP 계산 엔진 어댑터 초기화
+        calculator = ECPCalculatorAdapter()
+        
+        # 상세 하드웨어 사양 계산
+        result = calculator.generate_detailed_hardware_spec(
+            service_requirements.model_dump(),
+            gpu_type
+        )
+        
+        logger.info("상세 하드웨어 계산 완료", 
+                   success=result.get("success", False),
+                   total_gpus=result.get("summary", {}).get("total_gpu_count", 0))
+        
+        return result
+        
+    except Exception as e:
+        logger.error("상세 하드웨어 계산 실패", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"상세 하드웨어 계산 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+@router.post("/compare-gpu-options")
+async def compare_gpu_options(
+    service_requirements: ServiceRequirements
+) -> Dict[str, Any]:
+    """
+    GPU 옵션별 비교 분석 (ECP 계산 엔진 사용)
+    """
+    try:
+        logger.info("GPU 옵션 비교 요청", 
+                   service_requirements=service_requirements.model_dump())
+        
+        # ECP 계산 엔진 어댑터 초기화
+        calculator = ECPCalculatorAdapter()
+        
+        # GPU 옵션 비교
+        result = calculator.compare_gpu_options(
+            service_requirements.model_dump()
+        )
+        
+        logger.info("GPU 옵션 비교 완료", 
+                   success=result.get("success", False),
+                   recommendation=result.get("recommendation", "t4"))
+        
+        return result
+        
+    except Exception as e:
+        logger.error("GPU 옵션 비교 실패", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"GPU 옵션 비교 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+@router.post("/cloud-instance-mapping")
+async def get_cloud_instance_mapping(
+    service_requirements: ServiceRequirements,
+    gpu_type: str = "t4",
+    cloud_provider: str = "aws"
+) -> Dict[str, Any]:
+    """
+    클라우드 인스턴스 매핑 (ECP 계산 엔진 사용)
+    """
+    try:
+        logger.info("클라우드 인스턴스 매핑 요청", 
+                   service_requirements=service_requirements.model_dump(),
+                   gpu_type=gpu_type,
+                   cloud_provider=cloud_provider)
+        
+        # ECP 계산 엔진 어댑터 초기화
+        calculator = ECPCalculatorAdapter()
+        
+        # 클라우드 인스턴스 매핑
+        result = calculator.get_cloud_instance_mapping(
+            service_requirements.model_dump(),
+            gpu_type,
+            cloud_provider
+        )
+        
+        logger.info("클라우드 인스턴스 매핑 완료", 
+                   success=result.get("success", False),
+                   provider=cloud_provider)
+        
+        return result
+        
+    except Exception as e:
+        logger.error("클라우드 인스턴스 매핑 실패", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"클라우드 인스턴스 매핑 중 오류가 발생했습니다: {str(e)}"
+        )
 
 @router.post("/{tenant_id}/advanced-config-recommendations")
 async def get_advanced_config_recommendations(

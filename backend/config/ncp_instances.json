@@ -1,0 +1,234 @@
+{
+  "g2-standard-2": {
+    "vcpu": 2,
+    "memory_gb": 8,
+    "gpu_count": 1,
+    "gpu_type": "V100",
+    "monthly_cost_krw": 380000,
+    "category": "GPU"
+  },
+  "g2-standard-4": {
+    "vcpu": 4,
+    "memory_gb": 16,
+    "gpu_count": 1,
+    "gpu_type": "V100",
+    "monthly_cost_krw": 520000,
+    "category": "GPU"
+  },
+  "g2-standard-8": {
+    "vcpu": 8,
+    "memory_gb": 32,
+    "gpu_count": 1,
+    "gpu_type": "V100",
+    "monthly_cost_krw": 780000,
+    "category": "GPU"
+  },
+  "g2-standard-16": {
+    "vcpu": 16,
+    "memory_gb": 64,
+    "gpu_count": 1,
+    "gpu_type": "V100",
+    "monthly_cost_krw": 1350000,
+    "category": "GPU"
+  },
+  "g2-standard-32": {
+    "vcpu": 32,
+    "memory_gb": 128,
+    "gpu_count": 1,
+    "gpu_type": "V100",
+    "monthly_cost_krw": 2480000,
+    "category": "GPU"
+  },
+  "g2-highmem-8": {
+    "vcpu": 8,
+    "memory_gb": 64,
+    "gpu_count": 1,
+    "gpu_type": "V100",
+    "monthly_cost_krw": 890000,
+    "category": "GPU"
+  },
+  "g2-highmem-16": {
+    "vcpu": 16,
+    "memory_gb": 128,
+    "gpu_count": 1,
+    "gpu_type": "V100",
+    "monthly_cost_krw": 1580000,
+    "category": "GPU"
+  },
+  "c2-standard-2": {
+    "vcpu": 2,
+    "memory_gb": 4,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 42000,
+    "category": "CPU"
+  },
+  "c2-standard-4": {
+    "vcpu": 4,
+    "memory_gb": 8,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 84000,
+    "category": "CPU"
+  },
+  "c2-standard-8": {
+    "vcpu": 8,
+    "memory_gb": 32,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 168000,
+    "category": "CPU"
+  },
+  "c2-standard-16": {
+    "vcpu": 16,
+    "memory_gb": 64,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 336000,
+    "category": "CPU"
+  },
+  "c2-standard-32": {
+    "vcpu": 32,
+    "memory_gb": 128,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 672000,
+    "category": "CPU"
+  },
+  "c2-standard-48": {
+    "vcpu": 48,
+    "memory_gb": 192,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 1008000,
+    "category": "CPU"
+  },
+  "c2-standard-64": {
+    "vcpu": 64,
+    "memory_gb": 256,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 1344000,
+    "category": "CPU"
+  },
+  "c2-highmem-2": {
+    "vcpu": 2,
+    "memory_gb": 16,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 72000,
+    "category": "Memory"
+  },
+  "c2-highmem-4": {
+    "vcpu": 4,
+    "memory_gb": 32,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 144000,
+    "category": "Memory"
+  },
+  "c2-highmem-8": {
+    "vcpu": 8,
+    "memory_gb": 64,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 288000,
+    "category": "Memory"
+  },
+  "c2-highmem-16": {
+    "vcpu": 16,
+    "memory_gb": 128,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 576000,
+    "category": "Memory"
+  },
+  "c2-highmem-32": {
+    "vcpu": 32,
+    "memory_gb": 256,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 1152000,
+    "category": "Memory"
+  },
+  "c2-highmem-48": {
+    "vcpu": 48,
+    "memory_gb": 384,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 1728000,
+    "category": "Memory"
+  },
+  "c2-highmem-64": {
+    "vcpu": 64,
+    "memory_gb": 512,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 2304000,
+    "category": "Memory"
+  },
+  "db-c2-standard-2": {
+    "vcpu": 2,
+    "memory_gb": 8,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 65000,
+    "category": "Database"
+  },
+  "db-c2-standard-4": {
+    "vcpu": 4,
+    "memory_gb": 16,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 130000,
+    "category": "Database"
+  },
+  "db-c2-standard-8": {
+    "vcpu": 8,
+    "memory_gb": 32,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 260000,
+    "category": "Database"
+  },
+  "db-c2-standard-16": {
+    "vcpu": 16,
+    "memory_gb": 64,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 520000,
+    "category": "Database"
+  },
+  "db-c2-standard-32": {
+    "vcpu": 32,
+    "memory_gb": 128,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 1040000,
+    "category": "Database"
+  },
+  "db-c2-highmem-8": {
+    "vcpu": 8,
+    "memory_gb": 64,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 360000,
+    "category": "Database"
+  },
+  "db-c2-highmem-16": {
+    "vcpu": 16,
+    "memory_gb": 128,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 720000,
+    "category": "Database"
+  },
+  "db-c2-highmem-32": {
+    "vcpu": 32,
+    "memory_gb": 256,
+    "gpu_count": 0,
+    "gpu_type": "",
+    "monthly_cost_krw": 1440000,
+    "category": "Database"
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "version": "2.0",
+  "last_updated": "2024-12-01",
+  "services": {
+    "main_services": {
+      "callbot": {
+        "name": "콜봇",
+        "unit": "채널",
+        "description": "음성 통화 기반 AI 상담",
+        "working_hours": "09:00-18:00",
+        "avg_call_duration_minutes": 3,
+        "daily_calls_per_channel": 160,
+        "dependencies": ["stt", "tts", "nlp", "history", "db", "scenario_builder"],
+        "processing_requirements": {
+          "stt_channels_per_callbot": 1,
+          "tts_channels_per_callbot": 1,
+          "nlp_queries_per_call": 20,
+          "aicm_queries_per_call": 3
+        }
+      },
+      "chatbot": {
+        "name": "챗봇",
+        "unit": "사용자",
+        "description": "텍스트 기반 AI 채팅",
+        "working_hours": "24:00-24:00",
+        "avg_session_duration_minutes": 8,
+        "daily_sessions_per_user": 2.4,
+        "dependencies": ["nlp", "history", "db", "scenario_builder"],
+        "processing_requirements": {
+          "nlp_queries_per_session": 12,
+          "typing_speed_factor": 0.4
+        }
+      },
+      "advisor": {
+        "name": "어드바이저",
+        "unit": "상담사",
+        "description": "AI 보조 인간 상담",
+        "working_hours": "09:00-18:00",
+        "avg_consultation_duration_minutes": 3,
+        "daily_consultations_per_advisor": 160,
+        "dependencies": ["stt", "nlp", "aicm", "monitoring", "db", "summary"],
+        "processing_requirements": {
+          "stt_channels_per_advisor": 2,
+          "nlp_queries_per_consultation": 15,
+          "aicm_queries_per_consultation": 8.5,
+          "recording_storage_mb": 1.2
+        }
+      }
+    },
+    "support_services": {
+      "aicm": {
+        "name": "AICM 지식관리",
+        "description": "문서 관리 및 RAG 검색",
+        "processing_requirements": {
+          "vector_search_latency_ms": "100-300",
+          "document_processing": "external_llm",
+          "manual_search_frequency": "low"
+        }
+      },
+      "ta": {
+        "name": "TA 분석",
+        "description": "통계 분석 및 배치 처리",
+        "processing_type": "batch",
+        "resource_utilization": "idle_time",
+        "nlp_processing_rate": "100-200 lines/second"
+      },
+      "qa": {
+        "name": "QA 품질관리",
+        "description": "외부 LLM 기반 품질 평가",
+        "external_dependency": "gpt_api",
+        "internal_gpu_load": "minimal"
+      }
+    },
+    "infrastructure_services": {
+      "nginx": {"scaling_factor": 0.1, "base_cpu": 2},
+      "ssl_certificate": {"scaling_factor": 0.05, "base_cpu": 1},
+      "gateway": {"scaling_factor": 0.15, "base_cpu": 4},
+      "db": {"scaling_factor": 0.2, "base_cpu": 8, "base_storage_gb": 100},
+      "vector_db": {"scaling_factor": 0.12, "base_cpu": 6, "base_storage_gb": 200},
+      "auth_service": {"scaling_factor": 0.08, "base_cpu": 3}
+    }
+  }
+}

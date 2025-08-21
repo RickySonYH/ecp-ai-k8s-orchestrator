@@ -1,0 +1,264 @@
+{
+  "version": "2.0",
+  "last_updated": "2024-12-01",
+  "service_correlations": {
+    "callbot": {
+      "direct_dependencies": {
+        "stt": {
+          "ratio": 1.0,
+          "type": "channel_to_channel",
+          "notes": "콜봇 1채널당 STT 1채널 필요"
+        },
+        "tts": {
+          "ratio": 1.0,
+          "type": "channel_to_channel", 
+          "notes": "콜봇 1채널당 TTS 1채널 필요"
+        },
+        "nlp": {
+          "queries_per_call": 20,
+          "calls_per_day": 160,
+          "total_queries_per_day": 3200,
+          "notes": "3분 상담, 평균 20회 NLP 처리"
+        }
+      },
+      "indirect_dependencies": {
+        "aicm": {
+          "queries_per_call": 3,
+          "calls_per_day": 160,
+          "total_queries_per_day": 480,
+          "notes": "콜봇에서 간헐적 지식 검색"
+        },
+        "ta": {
+          "analysis_per_call": 1,
+          "batch_processing": true,
+          "processing_delay": "end_of_day",
+          "notes": "일 단위 배치 분석"
+        },
+        "qa": {
+          "evaluation_per_call": 0.7,
+          "external_llm": true,
+          "notes": "70% 콜에 대해 품질 평가"
+        }
+      },
+      "infrastructure_impact": {
+        "nginx": 0.1,
+        "gateway": 0.15,
+        "db": 0.2,
+        "auth": 0.05
+      }
+    },
+    "chatbot": {
+      "direct_dependencies": {
+        "nlp": {
+          "queries_per_session": 12,
+          "sessions_per_day": 2.4,
+          "total_queries_per_day": 28.8,
+          "typing_factor": 0.4,
+          "notes": "24시간 운영, 타이핑 속도 고려"
+        }
+      },
+      "indirect_dependencies": {
+        "aicm": {
+          "queries_per_session": 1.2,
+          "sessions_per_day": 2.4,
+          "total_queries_per_day": 2.88,
+          "notes": "챗봇에서 제한적 지식 검색"
+        },
+        "ta": {
+          "analysis_per_session": 1,
+          "batch_processing": true,
+          "notes": "세션 단위 배치 분석"
+        },
+        "qa": {
+          "evaluation_per_session": 0.5,
+          "external_llm": true,
+          "notes": "50% 세션에 대해 품질 평가"
+        }
+      },
+      "infrastructure_impact": {
+        "nginx": 0.08,
+        "gateway": 0.12,
+        "db": 0.15,
+        "auth": 0.04
+      }
+    },
+    "advisor": {
+      "direct_dependencies": {
+        "stt": {
+          "ratio": 2.0,
+          "cpu_per_channel": 0.8,
+          "type": "channels_per_advisor",
+          "notes": "상담사+고객 음성 STT 처리"
+        },
+        "nlp": {
+          "queries_per_consultation": 15,
+          "consultations_per_day": 160,
+          "total_queries_per_day": 2400,
+          "notes": "대화 맥락 분석 및 명사 추출"
+        },
+        "aicm": {
+          "queries_per_consultation": 8.5,
+          "consultations_per_day": 160,
+          "total_queries_per_day": 1360,
+          "target_latency_ms": 200,
+          "notes": "실시간 지식 검색 (핵심 기능)"
+        }
+      },
+      "indirect_dependencies": {
+        "ta": {
+          "analysis_per_consultation": 1,
+          "batch_processing": true,
+          "notes": "상담 내용 배치 분석"
+        },
+        "qa": {
+          "evaluation_per_consultation": 0.9,
+          "external_llm": true,
+          "notes": "90% 상담에 대해 품질 평가"
+        }
+      },
+      "infrastructure_impact": {
+        "nginx": 0.12,
+        "gateway": 0.18,
+        "db": 0.25,
+        "vector_db": 0.2,
+        "auth": 0.08
+      }
+    }
+  },
+  "support_service_multipliers": {
+    "aicm": {
+      "base_load": 0.1,
+      "advisor_multiplier": 0.85,
+      "callbot_multiplier": 0.15,
+      "chatbot_multiplier": 0.05,
+      "notes": "어드바이저가 85% 부하 차지"
+    },
+    "ta": {
+      "base_load": 0.05,
+      "batch_processing_factor": 0.3,
+      "idle_resource_utilization": true,
+      "notes": "유휴시간 배치처리로 효율성 증대"
+    },
+    "qa": {
+      "base_load": 0.02,
+      "external_llm_ratio": 0.95,
+      "internal_processing": 0.05,
+      "notes": "95% 외부 LLM, 5% 내부 처리"
+    }
+  },
+  "correlation_weights": {
+    "gpu_requirements": {
+      "t4": {
+        "tts": {
+          "base_capacity": 10,
+          "cache_optimized_capacity": 50,
+          "callbot_channels": 1.0,
+          "standalone_tts": 1.0
+        },
+        "nlp": {
+          "processing_rate": 150,
+          "callbot_load_factor": 0.67,
+          "chatbot_load_factor": 0.19,
+          "advisor_load_factor": 1.0,
+          "ta_load_factor": 0.13
+        },
+        "aicm": {
+          "search_rate": 100,
+          "callbot_load_factor": 0.3,
+          "chatbot_load_factor": 0.18,
+          "advisor_load_factor": 0.85
+        }
+      },
+      "v100": {
+        "tts": {
+          "base_capacity": 30,
+          "cache_optimized_capacity": 150,
+          "callbot_channels": 1.0,
+          "standalone_tts": 1.0
+        },
+        "nlp": {
+          "processing_rate": 450,
+          "callbot_load_factor": 0.67,
+          "chatbot_load_factor": 0.19,
+          "advisor_load_factor": 1.0,
+          "ta_load_factor": 0.13
+        },
+        "aicm": {
+          "search_rate": 300,
+          "callbot_load_factor": 0.3,
+          "chatbot_load_factor": 0.18,
+          "advisor_load_factor": 0.85
+        }
+      },
+      "l40s": {
+        "tts": {
+          "base_capacity": 40,
+          "cache_optimized_capacity": 200,
+          "callbot_channels": 1.0,
+          "standalone_tts": 1.0
+        },
+        "nlp": {
+          "processing_rate": 600,
+          "callbot_load_factor": 0.67,
+          "chatbot_load_factor": 0.19,
+          "advisor_load_factor": 1.0,
+          "ta_load_factor": 0.13
+        },
+        "aicm": {
+          "search_rate": 400,
+          "callbot_load_factor": 0.3,
+          "chatbot_load_factor": 0.18,
+          "advisor_load_factor": 0.85
+        }
+      }
+    },
+    "cpu_requirements": {
+      "stt": {
+        "channels_per_core": 6.5,
+        "callbot_stt_ratio": 1.0,
+        "advisor_stt_ratio": 2.0,
+        "advisor_cpu_per_channel": 0.8
+      },
+      "ta": {
+        "batch_processing": true,
+        "lines_per_second": 150,
+        "cpu_efficiency_factor": 0.3,
+        "idle_utilization": true
+      },
+      "qa": {
+        "external_llm_ratio": 0.95,
+        "internal_cpu_per_evaluation": 0.02,
+        "minimal_gpu_load": true
+      }
+    },
+    "network_requirements": {
+      "base_traffic": {
+        "callbot_mbps_per_channel": 0.6,
+        "chatbot_mbps_per_user": 0.144,
+        "advisor_mbps_per_advisor": 0.76,
+        "stt_overhead": 0.2,
+        "tts_overhead": 0.15
+      },
+      "api_traffic": {
+        "aicm_query_kb": 12,
+        "nlp_query_kb": 8,
+        "external_llm_kb": 25
+      }
+    },
+    "storage_requirements": {
+      "daily_mb_per_unit": {
+        "callbot": 230,
+        "chatbot": 43,
+        "advisor": 307,
+        "stt_recording": 3.2,
+        "conversation_logs": 2.8,
+        "analysis_results": 1.5
+      },
+      "retention_policy": {
+        "recordings": "90_days",
+        "conversations": "365_days", 
+        "analysis": "1095_days"
+      }
+    }
+  }
+}
