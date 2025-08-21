@@ -1,0 +1,530 @@
+{
+  "ecp_service_matrix": {
+    "version": "2.0",
+    "last_updated": "2024-12-01",
+    "tenant_presets": {
+      "micro": {
+        "max_channels": 10,
+        "description": "소규모 테스트 환경",
+        "gpu_multiplier": 1.0,
+        "cpu_multiplier": 1.0,
+        "resources": {
+          "cpu_limit": "2000m",
+          "memory_limit": "4Gi",
+          "gpu_limit": 1,
+          "storage": "500Gi"
+        },
+        "scaling": {
+          "min_replicas": 1,
+          "max_replicas": 3,
+          "target_cpu": 70
+        },
+        "sla": {
+          "availability": "99.0%",
+          "response_time": "<500ms"
+        }
+      },
+      "small": {
+        "max_channels": 100,
+        "description": "소규모 상용 환경",
+        "gpu_multiplier": 1.0,
+        "cpu_multiplier": 1.0,
+        "resources": {
+          "cpu_limit": "8000m",
+          "memory_limit": "16Gi",
+          "gpu_limit": 2,
+          "storage": "500Gi"
+        },
+        "scaling": {
+          "min_replicas": 2,
+          "max_replicas": 8,
+          "target_cpu": 60
+        },
+        "sla": {
+          "availability": "99.3%",
+          "response_time": "<300ms"
+        }
+      },
+      "medium": {
+        "max_channels": 500,
+        "description": "중규모 상용 환경",
+        "gpu_multiplier": 1.5,
+        "cpu_multiplier": 1.2,
+        "resources": {
+          "cpu_limit": "32000m",
+          "memory_limit": "64Gi",
+          "gpu_limit": 8,
+          "storage": "500Gi"
+        },
+        "scaling": {
+          "min_replicas": 3,
+          "max_replicas": 20,
+          "target_cpu": 50
+        },
+        "sla": {
+          "availability": "99.5%",
+          "response_time": "<200ms"
+        }
+      },
+      "large": {
+        "max_channels": 999999,
+        "description": "대규모 엔터프라이즈 환경",
+        "gpu_multiplier": 2.5,
+        "cpu_multiplier": 1.5,
+        "resources": {
+          "cpu_limit": "128000m",
+          "memory_limit": "256Gi",
+          "gpu_limit": 32,
+          "storage": "500Gi"
+        },
+        "scaling": {
+          "min_replicas": 5,
+          "max_replicas": 100,
+          "target_cpu": 40
+        },
+        "sla": {
+          "availability": "99.9%",
+          "response_time": "<100ms"
+        }
+      }
+    },
+    "services": {
+      "callbot": {
+        "type": "main_service",
+        "description": "음성 통화 기반 AI 상담",
+        "dependencies": ["stt", "tts", "nlp", "aicm", "history", "db"],
+        "resource_requirements": {
+          "cpu_per_channel": "100m",
+          "memory_per_channel": "256Mi",
+          "stt_channels_ratio": 1.0,
+          "tts_channels_ratio": 1.0,
+          "nlp_queries_per_day": 3200,
+          "nlp_queries_per_call": 20,
+          "aicm_queries_per_day": 480,
+          "aicm_queries_per_call": 3,
+          "avg_call_duration_min": 3,
+          "daily_calls_per_channel": 160
+        },
+        "working_hours": {
+          "start": "09:00",
+          "end": "18:00",
+          "timezone": "Asia/Seoul"
+        },
+        "infrastructure_impact": {
+          "nginx": 0.1,
+          "gateway": 0.15,
+          "db": 0.2,
+          "auth": 0.05
+        },
+        "container_specs": {
+          "image": "ecp-ai/callbot:latest",
+          "ports": [{"containerPort": 8080, "protocol": "TCP"}],
+          "env": [
+            {"name": "STT_ENDPOINT", "value": "http://stt-service:8080"},
+            {"name": "TTS_ENDPOINT", "value": "http://tts-service:8080"},
+            {"name": "NLP_ENDPOINT", "value": "http://nlp-service:8080"}
+          ]
+        }
+      },
+      "chatbot": {
+        "type": "main_service", 
+        "description": "텍스트 기반 AI 채팅",
+        "dependencies": ["nlp", "aicm", "history", "db"],
+        "resource_requirements": {
+          "cpu_per_user": "50m",
+          "memory_per_user": "128Mi",
+          "nlp_queries_per_day": 288,
+          "nlp_queries_per_session": 12,
+          "aicm_queries_per_day": 24,
+          "aicm_queries_per_session": 1,
+          "avg_session_duration_min": 8,
+          "daily_sessions_per_user": 2.4,
+          "typing_speed_factor": 0.4
+        },
+        "working_hours": {
+          "start": "00:00",
+          "end": "24:00",
+          "timezone": "Asia/Seoul"
+        },
+        "infrastructure_impact": {
+          "nginx": 0.08,
+          "gateway": 0.12,
+          "db": 0.15,
+          "auth": 0.04
+        },
+        "container_specs": {
+          "image": "ecp-ai/chatbot:latest",
+          "ports": [{"containerPort": 8081, "protocol": "TCP"}],
+          "env": [
+            {"name": "NLP_ENDPOINT", "value": "http://nlp-service:8080"},
+            {"name": "AICM_ENDPOINT", "value": "http://aicm-service:8080"}
+          ]
+        }
+      },
+      "advisor": {
+        "type": "main_service",
+        "description": "AI 보조 인간 상담",
+        "dependencies": ["stt", "nlp", "aicm", "monitoring", "db"],
+        "resource_requirements": {
+          "cpu_per_advisor": "200m",
+          "memory_per_advisor": "512Mi",
+          "stt_channels_ratio": 2.0,
+          "stt_cpu_per_channel": 0.8,
+          "nlp_queries_per_day": 2400,
+          "nlp_queries_per_consultation": 15,
+          "aicm_queries_per_day": 1360,
+          "aicm_queries_per_consultation": 8.5,
+          "avg_consultation_duration_min": 3,
+          "daily_consultations_per_advisor": 160,
+          "recording_storage_mb_per_day": 1.2
+        },
+        "working_hours": {
+          "start": "09:00",
+          "end": "18:00", 
+          "timezone": "Asia/Seoul"
+        },
+        "infrastructure_impact": {
+          "nginx": 0.12,
+          "gateway": 0.18,
+          "db": 0.25,
+          "vector_db": 0.2,
+          "auth": 0.08
+        },
+        "container_specs": {
+          "image": "ecp-ai/advisor:latest",
+          "ports": [{"containerPort": 8082, "protocol": "TCP"}],
+          "env": [
+            {"name": "STT_ENDPOINT", "value": "http://stt-service:8080"},
+            {"name": "NLP_ENDPOINT", "value": "http://nlp-service:8080"},
+            {"name": "AICM_ENDPOINT", "value": "http://aicm-service:8080"}
+          ]
+        }
+      },
+      "stt": {
+        "type": "support_service",
+        "description": "Speech to Text 처리",
+        "resource_requirements": {
+          "cpu_per_channel": "154m",
+          "memory_per_channel": "512Mi",
+          "channels_per_core": 6.5,
+          "processing_type": "realtime"
+        },
+        "container_specs": {
+          "image": "ecp-ai/stt:latest",
+          "ports": [{"containerPort": 8083, "protocol": "TCP"}],
+          "resources": {
+            "requests": {"cpu": "500m", "memory": "1Gi"},
+            "limits": {"cpu": "2000m", "memory": "4Gi"}
+          }
+        }
+      },
+      "tts": {
+        "type": "support_service",
+        "description": "Text to Speech 처리",
+        "resource_requirements": {
+          "gpu_type": "nvidia.com/gpu",
+          "base_channels_per_gpu": 10,
+          "cache_optimized_channels": 50,
+          "cache_efficiency": 0.3,
+          "processing_type": "realtime"
+        },
+        "container_specs": {
+          "image": "ecp-ai/tts:latest",
+          "ports": [{"containerPort": 8084, "protocol": "TCP"}],
+          "resources": {
+            "requests": {"nvidia.com/gpu": 1, "memory": "8Gi"},
+            "limits": {"nvidia.com/gpu": 1, "memory": "16Gi"}
+          }
+        }
+      },
+      "nlp": {
+        "type": "support_service",
+        "description": "자연어 처리 엔진",
+        "resource_requirements": {
+          "gpu_type": "nvidia.com/gpu",
+          "queries_per_second_per_gpu": 150,
+          "response_time_target_ms": 60,
+          "batch_size": 32,
+          "processing_type": "realtime"
+        },
+        "container_specs": {
+          "image": "ecp-ai/nlp:latest",
+          "ports": [{"containerPort": 8085, "protocol": "TCP"}],
+          "resources": {
+            "requests": {"nvidia.com/gpu": 1, "memory": "16Gi"},
+            "limits": {"nvidia.com/gpu": 2, "memory": "32Gi"}
+          }
+        }
+      },
+      "aicm": {
+        "type": "support_service",
+        "description": "AI 지식 관리 시스템",
+        "dependencies": ["vector_db"],
+        "resource_requirements": {
+          "gpu_type": "nvidia.com/gpu",
+          "searches_per_second_per_gpu": 100,
+          "target_latency_ms": 200,
+          "embedding_generation_rate": 50,
+          "processing_type": "realtime"
+        },
+        "container_specs": {
+          "image": "ecp-ai/aicm:latest",
+          "ports": [{"containerPort": 8086, "protocol": "TCP"}],
+          "resources": {
+            "requests": {"nvidia.com/gpu": 1, "memory": "8Gi"},
+            "limits": {"nvidia.com/gpu": 1, "memory": "16Gi"}
+          }
+        }
+      },
+      "ta": {
+        "type": "support_service",
+        "description": "통계 분석 서비스",
+        "resource_requirements": {
+          "processing_type": "batch",
+          "lines_per_second": 150,
+          "cpu_efficiency_factor": 0.3,
+          "idle_utilization": true,
+          "batch_schedule": "0 2 * * *"
+        },
+        "container_specs": {
+          "image": "ecp-ai/ta:latest",
+          "ports": [{"containerPort": 8087, "protocol": "TCP"}],
+          "resources": {
+            "requests": {"cpu": "1000m", "memory": "2Gi"},
+            "limits": {"cpu": "4000m", "memory": "8Gi"}
+          }
+        }
+      },
+      "qa": {
+        "type": "support_service",
+        "description": "품질 관리 서비스",
+        "resource_requirements": {
+          "external_llm_ratio": 0.95,
+          "internal_processing_ratio": 0.05,
+          "cpu_per_evaluation": "10m",
+          "memory_per_evaluation": "64Mi"
+        },
+        "container_specs": {
+          "image": "ecp-ai/qa:latest",
+          "ports": [{"containerPort": 8088, "protocol": "TCP"}],
+          "resources": {
+            "requests": {"cpu": "500m", "memory": "1Gi"},
+            "limits": {"cpu": "2000m", "memory": "4Gi"}
+          }
+        }
+      }
+    },
+    "gpu_profiles": {
+      "t4": {
+        "memory_gb": 16,
+        "power_watts": 70,
+        "cost_per_hour": 0.35,
+        "performance_score": 1.0,
+        "processing_capacity": {
+          "tts_channels_base": 10,
+          "tts_channels_cache": 50,
+          "nlp_queries_per_second": 150,
+          "aicm_searches_per_second": 100
+        },
+        "ram_allocation": {
+          "base_ram": 32,
+          "workload_multiplier_range": [1.25, 2.5],
+          "max_ram_limit": 80
+        }
+      },
+      "v100": {
+        "memory_gb": 32,
+        "power_watts": 300,
+        "cost_per_hour": 2.48,
+        "performance_score": 3.0,
+        "processing_capacity": {
+          "tts_channels_base": 30,
+          "tts_channels_cache": 150,
+          "nlp_queries_per_second": 450,
+          "aicm_searches_per_second": 300
+        },
+        "ram_allocation": {
+          "base_ram": 64,
+          "workload_multiplier_range": [1.25, 1.25],
+          "max_ram_limit": 80
+        }
+      },
+      "l40s": {
+        "memory_gb": 48,
+        "power_watts": 300,
+        "cost_per_hour": 3.20,
+        "performance_score": 4.0,
+        "processing_capacity": {
+          "tts_channels_base": 40,
+          "tts_channels_cache": 200,
+          "nlp_queries_per_second": 600,
+          "aicm_searches_per_second": 400
+        },
+        "ram_allocation": {
+          "base_ram": 64,
+          "workload_multiplier_range": [1.25, 1.25],
+          "max_ram_limit": 80
+        }
+      }
+    },
+    "scaling_logic": {
+      "gpu_multipliers": {
+        "channels_100_or_less": {
+          "nlp_multiplier": 1.0,
+          "aicm_multiplier": 1.0,
+          "forced_gpu_type": "t4"
+        },
+        "channels_101_to_500": {
+          "nlp_multiplier": 1.5,
+          "aicm_multiplier": 1.5,
+          "gpu_selection": "auto"
+        },
+        "channels_over_500": {
+          "nlp_multiplier": 2.5,
+          "aicm_multiplier": 2.5,
+          "gpu_selection": "auto"
+        }
+      },
+      "gpu_type_selection": {
+        "small_scale": "t4",
+        "gpu_count_2_or_less": "t4", 
+        "gpu_count_3_to_8": "v100",
+        "gpu_count_over_8": "l40s"
+      }
+    },
+    "service_load_factors": {
+      "nlp_load_factors": {
+        "callbot": 0.67,
+        "chatbot": 0.19,
+        "advisor": 1.0,
+        "ta": 0.13
+      },
+      "aicm_load_factors": {
+        "callbot": 0.3,
+        "chatbot": 0.18,
+        "advisor": 0.85
+      },
+      "support_service_multipliers": {
+        "aicm": {
+          "base_load": 0.1,
+          "advisor_multiplier": 0.85,
+          "callbot_multiplier": 0.15,
+          "chatbot_multiplier": 0.05
+        },
+        "ta": {
+          "base_load": 0.05,
+          "batch_processing_factor": 0.3,
+          "idle_utilization": true
+        },
+        "qa": {
+          "base_load": 0.02,
+          "external_llm_ratio": 0.95,
+          "internal_processing": 0.05
+        }
+      }
+    },
+    "cpu_server_specs": {
+      "stt": {
+        "channels_per_core": 6.5,
+        "storage_gb": 500,
+        "ram_per_core": 2,
+        "processing_type": "realtime"
+      },
+      "ta": {
+        "batch_processing": true,
+        "batch_processing_factor": 0.3,
+        "idle_utilization": true,
+        "storage_gb": 500,
+        "ram_per_core": 2,
+        "processing_type": "batch"
+      },
+      "qa": {
+        "external_llm_ratio": 0.95,
+        "internal_processing_ratio": 0.05,
+        "storage_gb": 500,
+        "ram_per_core": 2,
+        "processing_type": "hybrid"
+      }
+    },
+    "infrastructure_servers": {
+      "general_servers": {
+        "ram_per_core": 2,
+        "storage_gb": 500,
+        "services": ["nginx", "api_gateway", "auth_service", "nas"]
+      },
+      "data_servers": {
+        "ram_per_core": 4,
+        "storage_dynamic": true,
+        "services": ["postgresql", "vector_db"],
+        "storage_calculation": {
+          "postgresql": "max(1.0, total_users * 0.005) TB",
+          "nas": "max(1.0, total_users * 0.005) TB"
+        }
+      }
+    },
+    "server_optimization": {
+      "overprovisioning_limit": 1.5,
+      "consolidation_priority": [
+        {"cores": 64, "priority": 1},
+        {"cores": 48, "priority": 2}, 
+        {"cores": 32, "priority": 3},
+        {"cores": 16, "priority": 4}
+      ],
+      "gpu_type_selection_rules": {
+        "small_scale": {"max_channels": 100, "forced_type": "t4"},
+        "gpu_efficiency": {"max_gpus": 2, "preferred_type": "t4"},
+        "medium_scale": {"max_gpus": 8, "preferred_type": "v100"},
+        "large_scale": {"min_gpus": 9, "preferred_type": "l40s"}
+      }
+    },
+    "cloud_instance_mapping": {
+      "aws": {
+        "selection_criteria": {
+          "cost_efficiency": "monthly_cost_asc",
+          "requirement_match": "vcpu >= required AND ram >= required",
+          "gpu_matching": "gpu_instances_only_if_needed"
+        },
+        "categories": ["general", "compute", "memory", "gpu"]
+      },
+      "ncp": {
+        "selection_criteria": {
+          "role_consideration": "database_category_for_db_servers",
+          "cost_efficiency": "monthly_cost_asc", 
+          "category_separation": "exclude_database_for_general_servers"
+        },
+        "categories": ["general", "database", "gpu"]
+      }
+    },
+    "msp_services": {
+      "aws": {
+        "economy": {"percentage": 10, "minimum_won": 1000000},
+        "standard": {"percentage": 30, "minimum_won": 1200000},
+        "premium": {"percentage": 50, "minimum_won": 2400000}
+      },
+      "ncp": {
+        "basic": {"percentage": 8, "minimum_won": 500000},
+        "standard": {"percentage": 15, "minimum_won": 1000000},
+        "premium": {"percentage": 25, "minimum_won": 2000000}
+      }
+    },
+      "sla_targets": {
+        "availability": 99.5,
+        "response_time_ms": 200,
+        "error_rate_percent": 0.1,
+        "recovery_time_seconds": 60
+      },
+      "alert_thresholds": {
+        "cpu_utilization": 80,
+        "memory_utilization": 85,
+        "gpu_utilization": 90,
+        "disk_utilization": 90,
+        "response_time_ms": 500
+      },
+      "scaling_triggers": {
+        "scale_up_cpu": 70,
+        "scale_down_cpu": 30,
+        "scale_up_requests": 1000,
+        "scale_down_requests": 100
+      }
+    }
+  }

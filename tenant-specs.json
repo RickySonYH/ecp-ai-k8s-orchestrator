@@ -1,0 +1,149 @@
+{
+  "tenant_id": "test-download",
+  "preset": "small",
+  "services": {
+    "callbot": {
+      "enabled": true,
+      "count": 10,
+      "resource_requirements": {
+        "cpu_per_channel": "100m",
+        "memory_per_channel": "256Mi",
+        "stt_channels_ratio": 1.0,
+        "tts_channels_ratio": 1.0,
+        "nlp_queries_per_day": 3200,
+        "nlp_queries_per_call": 20,
+        "aicm_queries_per_day": 480,
+        "aicm_queries_per_call": 3,
+        "avg_call_duration_min": 3,
+        "daily_calls_per_channel": 160
+      },
+      "container_specs": {
+        "image": "ecp-ai/callbot:latest",
+        "ports": [
+          {
+            "containerPort": 8080,
+            "protocol": "TCP"
+          }
+        ],
+        "env": [
+          {
+            "name": "STT_ENDPOINT",
+            "value": "http://stt-service:8080"
+          },
+          {
+            "name": "TTS_ENDPOINT",
+            "value": "http://tts-service:8080"
+          },
+          {
+            "name": "NLP_ENDPOINT",
+            "value": "http://nlp-service:8080"
+          }
+        ]
+      },
+      "scaling": {
+        "min_replicas": 2,
+        "max_replicas": 8,
+        "target_cpu": 60
+      }
+    },
+    "chatbot": {
+      "enabled": true,
+      "count": 50,
+      "resource_requirements": {
+        "cpu_per_user": "50m",
+        "memory_per_user": "128Mi",
+        "nlp_queries_per_day": 288,
+        "nlp_queries_per_session": 12,
+        "aicm_queries_per_day": 24,
+        "aicm_queries_per_session": 1,
+        "avg_session_duration_min": 8,
+        "daily_sessions_per_user": 2.4,
+        "typing_speed_factor": 0.4
+      },
+      "container_specs": {
+        "image": "ecp-ai/chatbot:latest",
+        "ports": [
+          {
+            "containerPort": 8081,
+            "protocol": "TCP"
+          }
+        ],
+        "env": [
+          {
+            "name": "NLP_ENDPOINT",
+            "value": "http://nlp-service:8080"
+          },
+          {
+            "name": "AICM_ENDPOINT",
+            "value": "http://aicm-service:8080"
+          }
+        ]
+      },
+      "scaling": {
+        "min_replicas": 2,
+        "max_replicas": 8,
+        "target_cpu": 60
+      }
+    },
+    "advisor": {
+      "enabled": true,
+      "count": 5,
+      "resource_requirements": {
+        "cpu_per_advisor": "200m",
+        "memory_per_advisor": "512Mi",
+        "stt_channels_ratio": 2.0,
+        "stt_cpu_per_channel": 0.8,
+        "nlp_queries_per_day": 2400,
+        "nlp_queries_per_consultation": 15,
+        "aicm_queries_per_day": 1360,
+        "aicm_queries_per_consultation": 8.5,
+        "avg_consultation_duration_min": 3,
+        "daily_consultations_per_advisor": 160,
+        "recording_storage_mb_per_day": 1.2
+      },
+      "container_specs": {
+        "image": "ecp-ai/advisor:latest",
+        "ports": [
+          {
+            "containerPort": 8082,
+            "protocol": "TCP"
+          }
+        ],
+        "env": [
+          {
+            "name": "STT_ENDPOINT",
+            "value": "http://stt-service:8080"
+          },
+          {
+            "name": "NLP_ENDPOINT",
+            "value": "http://nlp-service:8080"
+          },
+          {
+            "name": "AICM_ENDPOINT",
+            "value": "http://aicm-service:8080"
+          }
+        ]
+      },
+      "scaling": {
+        "min_replicas": 2,
+        "max_replicas": 8,
+        "target_cpu": 60
+      }
+    }
+  },
+  "resources": {
+    "cpu_limit": "8000m",
+    "memory_limit": "16Gi",
+    "gpu_limit": 2,
+    "storage": "500Gi",
+    "gpu_type": "t4",
+    "gpu_count": 3,
+    "gpu_ram_gb": 42.06311111111111,
+    "cpu_cores": 31,
+    "storage_tb": 1.0
+  },
+  "sla_target": {
+    "availability": "99.3%",
+    "response_time": "<300ms"
+  }
+}

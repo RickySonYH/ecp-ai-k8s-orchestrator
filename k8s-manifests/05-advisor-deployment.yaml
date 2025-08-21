@@ -1,0 +1,72 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: advisor
+  namespace: test-download-ecp-ai
+  labels:
+    app: advisor
+    tenant: test-download
+    ecp.ai/tenant-id: test-download
+    ecp.ai/service: advisor
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: advisor
+      tenant: test-download
+  template:
+    metadata:
+      labels:
+        app: advisor
+        tenant: test-download
+        ecp.ai/tenant-id: test-download
+        ecp.ai/service: advisor
+        monitoring: enabled
+    spec:
+      
+      containers:
+      - name: advisor
+        image: ecp-ai/advisor:latest
+        ports:
+        
+        - containerPort: 8082
+          protocol: TCP
+        
+        env:
+        - name: TENANT_ID
+          value: test-download
+        - name: SERVICE_NAME
+          value: advisor
+        
+        
+        - name: STT_ENDPOINT
+          value: http://stt-service:8080
+        
+        - name: NLP_ENDPOINT
+          value: http://nlp-service:8080
+        
+        - name: AICM_ENDPOINT
+          value: http://aicm-service:8080
+        
+        resources:
+          requests:
+            
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            
+            cpu: 1000m
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8082
+          initialDelaySeconds: 5
+          periodSeconds: 5

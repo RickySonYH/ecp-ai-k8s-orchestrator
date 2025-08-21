@@ -1,0 +1,24 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: callbot-service
+  namespace: test-download-ecp-ai
+  labels:
+    app: callbot
+    tenant: test-download
+    ecp.ai/tenant-id: test-download
+    ecp.ai/service: callbot
+    monitoring: enabled
+spec:
+  selector:
+    app: callbot
+    tenant: test-download
+  ports:
+  
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  
+  type: ClusterIP

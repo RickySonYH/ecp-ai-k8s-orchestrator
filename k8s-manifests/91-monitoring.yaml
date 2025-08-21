@@ -1,0 +1,16 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app.kubernetes.io/name: ecp-ai
+    tenant: test-download
+  name: ecp-ai-monitoring
+  namespace: test-download-ecp-ai
+spec:
+  endpoints:
+  - interval: 30s
+    path: /metrics
+    port: metrics
+  selector:
+    matchLabels:
+      monitoring: enabled

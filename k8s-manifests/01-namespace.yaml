@@ -1,0 +1,15 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-download-ecp-ai
+  labels:
+    tenant: test-download
+    app.kubernetes.io/name: ecp-ai
+    app.kubernetes.io/managed-by: ecp-orchestrator
+    tier: small
+    ecp.ai/tenant-id: test-download
+    ecp.ai/preset: small
+  annotations:
+    ecp.ai/created-by: ecp-orchestrator
+    ecp.ai/description: "ECP-AI tenant namespace for test-download"

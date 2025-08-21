@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1976d2" />
+    <meta name="description" content="ECP-AI Kubernetes Orchestrator - 콜봇/챗봇/어드바이저 테넌시 자동 관리 시스템" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Material Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    
+    <title>ECP-AI Kubernetes Orchestrator</title>
+    
+    <style>
+      /* 로딩 스크린 */
+      #loading-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        color: white;
+        z-index: 9999;
+        transition: opacity 0.5s ease;
+      }
+      
+      .loading-logo {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        animation: pulse 2s infinite;
+      }
+      
+      .loading-text {
+        font-size: 1.5rem;
+        font-weight: 300;
+        margin-bottom: 2rem;
+      }
+      
+      .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top-color: #fff;
+        animation: spin 1s ease-in-out infinite;
+      }
+      
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+      }
+      
+      /* 로딩 완료 시 숨김 */
+      .loaded #loading-screen {
+        opacity: 0;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>ECP-AI Kubernetes Orchestrator를 실행하려면 JavaScript를 활성화해야 합니다.</noscript>
+    
+    <!-- 로딩 스크린 -->
+    <div id="loading-screen">
+      <div class="loading-logo">🚀</div>
+      <div class="loading-text">ECP-AI Kubernetes Orchestrator</div>
+      <div class="loading-spinner"></div>
+      <div style="margin-top: 1rem; font-size: 0.9rem; opacity: 0.8;">
+        콜봇 · 챗봇 · 어드바이저 테넌시 관리 시스템
+      </div>
+    </div>
+    
+    <!-- React 앱 마운트 포인트 -->
+    <div id="root"></div>
+    
+    <script>
+      // 로딩 스크린 제거 (React 앱 로드 후)
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          document.body.classList.add('loaded');
+          setTimeout(function() {
+            const loadingScreen = document.getElementById('loading-screen');
+            if (loadingScreen) {
+              loadingScreen.remove();
+            }
+          }, 500);
+        }, 1000);
+      });
+      
+      // 에러 처리
+      window.addEventListener('error', function(e) {
+        console.error('애플리케이션 오류:', e.error);
+      });
+      
+      // 서비스 워커 등록 (PWA 지원)
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/service-worker.js')
+            .then(function(registration) {
+              console.log('SW 등록 성공:', registration.scope);
+            })
+            .catch(function(registrationError) {
+              console.log('SW 등록 실패:', registrationError);
+            });
+        });
+      }
+    </script>
+  </body>
+</html>
