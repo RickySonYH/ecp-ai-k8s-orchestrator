@@ -58,6 +58,7 @@ import { styled } from '@mui/material/styles';
 // 컴포넌트 임포트
 import { TenantCreator } from './components/TenantCreator.tsx';
 import { TenantDashboard } from './components/TenantDashboard.tsx';
+import AdvancedMonitoring from './components/AdvancedMonitoring.tsx';
 
 // 타입 정의
 interface DeploymentStatus {
@@ -368,7 +369,7 @@ function App() {
             
             <ListItem button onClick={() => { setCurrentTab(3); setDrawerOpen(false); }}>
               <ListItemIcon><MonitoringIcon /></ListItemIcon>
-              <ListItemText primary="시스템 모니터링" />
+              <ListItemText primary="고급 모니터링" />
             </ListItem>
             
             <ListItem button onClick={() => { setCurrentTab(4); setDrawerOpen(false); }}>
@@ -538,7 +539,7 @@ function App() {
                 iconPosition="start"
               />
               <Tab 
-                label="📈 시스템 모니터링" 
+                label="🚧 고급 모니터링" 
                 icon={<MonitoringIcon />}
                 iconPosition="start"
               />
@@ -583,7 +584,7 @@ function App() {
           </TabPanel>
 
           <TabPanel value={currentTab} index={3}>
-            <SystemMonitoringView systemMetrics={systemMetrics} />
+            <AdvancedMonitoring />
           </TabPanel>
 
           <TabPanel value={currentTab} index={4}>

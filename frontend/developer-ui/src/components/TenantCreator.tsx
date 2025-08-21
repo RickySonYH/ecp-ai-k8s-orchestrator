@@ -370,79 +370,135 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
             </Grid>
           </Grid>
 
-          {/* 메인 서비스 설정 */}
-          <ServiceSection>
-            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-              📞 메인 서비스
-              <Tooltip title="콜봇, 챗봇, 어드바이저는 ECP-AI의 핵심 서비스입니다">
-                <InfoIcon sx={{ ml: 1, fontSize: 20, color: 'text.secondary' }} />
-              </Tooltip>
-            </Typography>
-
-            {Object.entries(serviceConfigs).map(([key, config]) => (
-              <Box key={key} sx={{ mb: 3 }}>
-                <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                  <Typography variant="subtitle1" fontWeight="medium">
-                    {config.label}: {services[key as keyof ServiceRequirements]}
-                  </Typography>
-                  <Tooltip title={config.description}>
-                    <InfoIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+          {/* 서비스 설정 - 메인과 지원 서비스를 나란히 배치 */}
+          <Grid container spacing={3} sx={{ mb: 3 }}>
+            {/* 메인 서비스 */}
+            <Grid item xs={12} lg={6}>
+              <ServiceSection sx={{ height: '100%' }}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                  📞 메인 서비스
+                  <Tooltip title="콜봇, 챗봇, 어드바이저는 ECP-AI의 핵심 서비스입니다">
+                    <InfoIcon sx={{ ml: 1, fontSize: 20, color: 'text.secondary' }} />
                   </Tooltip>
-                </Box>
-                <Slider
-                  value={services[key as keyof ServiceRequirements]}
-                  onChange={(_, value) => handleServiceChange(key as keyof ServiceRequirements, value as number)}
-                  min={0}
-                  max={config.max}
-                  step={config.step}
-                  marks={config.marks}
-                  disabled={loading}
-                  color={config.color}
-                  sx={{ mt: 1 }}
-                />
-              </Box>
-            ))}
-          </ServiceSection>
+                </Typography>
 
-          {/* 지원 서비스 설정 (고급) */}
-          <ServiceSection>
-            <Box display="flex" justifyContent="space-between" alignItems="center" onClick={() => setShowAdvanced(!showAdvanced)} sx={{ cursor: 'pointer' }}>
-              <Typography variant="h6">
-                🛠️ 지원 서비스 (독립 운영)
-              </Typography>
-              <IconButton size="small">
-                {showAdvanced ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-              </IconButton>
-            </Box>
-            
-            <Collapse in={showAdvanced}>
-              <Grid container spacing={2} sx={{ mt: 1 }}>
+                {Object.entries(serviceConfigs).map(([key, config]) => (
+                  <Box key={key} sx={{ mb: 3 }}>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                      <Typography variant="subtitle1" fontWeight="medium">
+                        {config.label}: {services[key as keyof ServiceRequirements]}
+                      </Typography>
+                      <Tooltip title={config.description}>
+                        <InfoIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                      </Tooltip>
+                    </Box>
+                    
+                    {/* 듀얼 입력: 슬라이더 + 숫자 입력 */}
+                    <Box display="flex" alignItems="center" gap={2}>
+                      <Slider
+                        value={services[key as keyof ServiceRequirements]}
+                        onChange={(_, value) => handleServiceChange(key as keyof ServiceRequirements, value as number)}
+                        min={0}
+                        max={config.max}
+                        step={1}
+                        marks={config.marks}
+                        disabled={loading}
+                        color={config.color}
+                        sx={{ flex: 1 }}
+                        valueLabelDisplay="auto"
+                      />
+                      <TextField
+                        type="number"
+                        value={services[key as keyof ServiceRequirements]}
+                        onChange={(e) => {
+                          const value = Math.max(0, Math.min(config.max, parseInt(e.target.value) || 0));
+                          handleServiceChange(key as keyof ServiceRequirements, value);
+                        }}
+                        inputProps={{ 
+                          min: 0, 
+                          max: config.max, 
+                          step: 1 
+                        }}
+                        size="small"
+                        disabled={loading}
+                        sx={{ 
+                          width: 90,
+                          '& .MuiOutlinedInput-root': {
+                            '& fieldset': {
+                              borderColor: config.color === 'primary' ? 'primary.main' : 
+                                          config.color === 'secondary' ? 'secondary.main' :
+                                          config.color === 'success' ? 'success.main' : 'grey.300'
+                            }
+                          }
+                        }}
+                      />
+                    </Box>
+                  </Box>
+                ))}
+              </ServiceSection>
+            </Grid>
+
+            {/* 지원 서비스 */}
+            <Grid item xs={12} lg={6}>
+              <ServiceSection sx={{ height: '100%' }}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                  🛠️ 지원 서비스 (독립 운영)
+                  <Tooltip title="STT, TTS, TA, QA는 독립적으로 운영되는 지원 서비스입니다">
+                    <InfoIcon sx={{ ml: 1, fontSize: 20, color: 'text.secondary' }} />
+                  </Tooltip>
+                </Typography>
+
                 {Object.entries(supportServiceConfigs).map(([key, config]) => (
-                  <Grid item xs={12} md={6} key={key}>
-                    <Box>
-                      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                        <Typography variant="body2" fontWeight="medium">
-                          {config.label}: {services[key as keyof ServiceRequirements]}
-                        </Typography>
-                        <Tooltip title={config.description}>
-                          <InfoIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
-                        </Tooltip>
-                      </Box>
+                  <Box key={key} sx={{ mb: 3 }}>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                      <Typography variant="subtitle1" fontWeight="medium">
+                        {config.label}: {services[key as keyof ServiceRequirements]}
+                      </Typography>
+                      <Tooltip title={config.description}>
+                        <InfoIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                      </Tooltip>
+                    </Box>
+                    
+                    {/* 듀얼 입력: 슬라이더 + 숫자 입력 */}
+                    <Box display="flex" alignItems="center" gap={2}>
                       <Slider
                         value={services[key as keyof ServiceRequirements]}
                         onChange={(_, value) => handleServiceChange(key as keyof ServiceRequirements, value as number)}
                         min={0}
                         max={1000}
-                        step={10}
+                        step={1}
+                        marks={[
+                          { value: 0, label: '0' },
+                          { value: 250, label: '250' },
+                          { value: 500, label: '500' },
+                          { value: 1000, label: '1K' }
+                        ]}
                         disabled={loading}
+                        sx={{ flex: 1 }}
+                        valueLabelDisplay="auto"
+                      />
+                      <TextField
+                        type="number"
+                        value={services[key as keyof ServiceRequirements]}
+                        onChange={(e) => {
+                          const value = Math.max(0, Math.min(1000, parseInt(e.target.value) || 0));
+                          handleServiceChange(key as keyof ServiceRequirements, value);
+                        }}
+                        inputProps={{ 
+                          min: 0, 
+                          max: 1000, 
+                          step: 1 
+                        }}
                         size="small"
+                        disabled={loading}
+                        sx={{ width: 90 }}
                       />
                     </Box>
-                  </Grid>
+                  </Box>
                 ))}
-              </Grid>
-            </Collapse>
-          </ServiceSection>
+              </ServiceSection>
+            </Grid>
+          </Grid>
 
           {/* 실시간 예상 계산 결과 */}
           <Alert 
