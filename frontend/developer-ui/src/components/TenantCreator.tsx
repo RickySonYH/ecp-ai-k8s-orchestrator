@@ -7,7 +7,7 @@
  * - Material-UI 반응형 디자인
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
   Card,
@@ -23,7 +23,6 @@ import {
   Slider,
   Alert,
   AlertTitle,
-  CircularProgress,
   Chip,
   Paper,
   Divider,
@@ -38,9 +37,7 @@ import {
   ExpandLess as ExpandLessIcon,
   Rocket as RocketIcon,
   Memory as MemoryIcon,
-  Speed as SpeedIcon,
-  Storage as StorageIcon,
-  Visibility as VisibilityIcon
+  Speed as SpeedIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { DeploymentWizard } from './DeploymentWizard.tsx';
@@ -107,7 +104,7 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+
   const [showCalculation, setShowCalculation] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const [showHardwareSpec, setShowHardwareSpec] = useState(false);

@@ -804,3 +804,230 @@ async def get_preset_template(
             status_code=500,
             detail=f"프리셋 템플릿 조회 중 오류가 발생했습니다: {str(e)}"
         )
+
+
+# ==========================================
+# 고급 모니터링 API 엔드포인트
+# ==========================================
+
+@router.get("/monitoring/system-metrics")
+async def get_system_metrics() -> Dict[str, Any]:
+    """
+    시스템 전체 메트릭 조회 (데모 데이터)
+    """
+    import random
+    from datetime import datetime, timedelta
+    
+    try:
+        logger.info("시스템 메트릭 조회 요청")
+        
+        # 가상 시스템 메트릭 생성
+        current_time = datetime.now()
+        metrics_data = []
+        
+        for i in range(60):  # 최근 1시간 데이터
+            timestamp = current_time - timedelta(minutes=i)
+            metrics_data.append({
+                "timestamp": timestamp.isoformat(),
+                "cpu_usage": random.uniform(20, 80),
+                "memory_usage": random.uniform(30, 75),
+                "gpu_usage": random.uniform(10, 90),
+                "network_io": random.uniform(50, 200),
+                "active_tenants": random.randint(3, 7),
+                "total_requests": random.randint(100, 1000),
+                "error_rate": random.uniform(0, 2.5)
+            })
+        
+        return {
+            "success": True,
+            "metrics": metrics_data[::-1],  # 시간순 정렬
+            "summary": {
+                "total_tenants": 5,
+                "active_services": 25,
+                "avg_cpu": sum(m["cpu_usage"] for m in metrics_data) / len(metrics_data),
+                "avg_memory": sum(m["memory_usage"] for m in metrics_data) / len(metrics_data),
+                "system_health": "healthy"
+            }
+        }
+        
+    except Exception as e:
+        logger.error("시스템 메트릭 조회 실패", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"시스템 메트릭 조회 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+@router.get("/monitoring/tenant-comparison")
+async def get_tenant_comparison() -> Dict[str, Any]:
+    """
+    테넌시별 성능 비교 데이터 (데모 데이터)
+    """
+    import random
+    
+    try:
+        logger.info("테넌시 비교 데이터 조회 요청")
+        
+        demo_tenants = [
+            {"id": "tenant-001", "name": "글로벌 콜센터", "preset": "large"},
+            {"id": "tenant-002", "name": "스마트 상담봇", "preset": "medium"}, 
+            {"id": "tenant-003", "name": "음성 분석 서비스", "preset": "small"},
+            {"id": "tenant-004", "name": "AI 어드바이저", "preset": "medium"},
+            {"id": "tenant-005", "name": "개발 테스트", "preset": "micro"}
+        ]
+        
+        comparison_data = []
+        for tenant in demo_tenants:
+            status = random.choice(["healthy", "warning", "critical"]) if random.random() > 0.7 else "healthy"
+            comparison_data.append({
+                "tenant_id": tenant["id"],
+                "name": tenant["name"],
+                "preset": tenant["preset"],
+                "status": status,
+                "cpu_usage": random.uniform(10, 85),
+                "memory_usage": random.uniform(20, 80),
+                "gpu_usage": random.uniform(5, 95),
+                "availability": random.uniform(99.0, 99.99),
+                "response_time": random.uniform(50, 300),
+                "throughput": random.randint(100, 2000),
+                "error_count": random.randint(0, 25),
+                "active_connections": random.randint(10, 500)
+            })
+        
+        return {
+            "success": True,
+            "tenants": comparison_data,
+            "total_count": len(comparison_data)
+        }
+        
+    except Exception as e:
+        logger.error("테넌시 비교 데이터 조회 실패", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"테넌시 비교 데이터 조회 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+@router.get("/monitoring/sla-trends")
+async def get_sla_trends() -> Dict[str, Any]:
+    """
+    SLA 메트릭 트렌드 데이터 (데모 데이터)
+    """
+    import random
+    from datetime import datetime, timedelta
+    
+    try:
+        logger.info("SLA 트렌드 데이터 조회 요청")
+        
+        current_time = datetime.now()
+        trend_data = []
+        
+        for i in range(24):  # 최근 24시간
+            timestamp = current_time - timedelta(hours=i)
+            trend_data.append({
+                "timestamp": timestamp.isoformat(),
+                "hour": timestamp.strftime("%H:00"),
+                "availability": random.uniform(99.5, 99.99),
+                "response_time": random.uniform(80, 150),
+                "error_rate": random.uniform(0, 0.8),
+                "throughput": random.randint(500, 1500),
+                "concurrent_users": random.randint(50, 300)
+            })
+        
+        # SLA 목표 대비 성과 계산
+        avg_availability = sum(t["availability"] for t in trend_data) / len(trend_data)
+        avg_response_time = sum(t["response_time"] for t in trend_data) / len(trend_data)
+        avg_error_rate = sum(t["error_rate"] for t in trend_data) / len(trend_data)
+        avg_throughput = sum(t["throughput"] for t in trend_data) / len(trend_data)
+        
+        return {
+            "success": True,
+            "trends": trend_data[::-1],  # 시간순 정렬
+            "sla_summary": {
+                "availability": {
+                    "current": avg_availability,
+                    "target": 99.9,
+                    "status": "good" if avg_availability >= 99.9 else "warning"
+                },
+                "response_time": {
+                    "current": avg_response_time,
+                    "target": 100,
+                    "status": "good" if avg_response_time <= 100 else "warning"
+                },
+                "error_rate": {
+                    "current": avg_error_rate,
+                    "target": 0.5,
+                    "status": "good" if avg_error_rate <= 0.5 else "warning"
+                },
+                "throughput": {
+                    "current": avg_throughput,
+                    "target": 1000,
+                    "status": "good" if avg_throughput >= 1000 else "warning"
+                }
+            }
+        }
+        
+    except Exception as e:
+        logger.error("SLA 트렌드 데이터 조회 실패", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"SLA 트렌드 데이터 조회 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+@router.get("/monitoring/alerts")
+async def get_monitoring_alerts() -> Dict[str, Any]:
+    """
+    모니터링 알림 목록 조회 (데모 데이터)
+    """
+    import random
+    from datetime import datetime, timedelta
+    
+    try:
+        logger.info("모니터링 알림 조회 요청")
+        
+        alert_types = ["info", "warning", "error"]
+        alert_messages = [
+            "CPU 사용률이 임계값을 초과했습니다",
+            "GPU 메모리 부족 경고가 발생했습니다", 
+            "응답 시간이 SLA 기준을 초과했습니다",
+            "네트워크 지연이 감지되었습니다",
+            "자동 스케일링이 실행되었습니다",
+            "새로운 테넌시가 생성되었습니다",
+            "백업 작업이 완료되었습니다",
+            "보안 정책 위반이 감지되었습니다"
+        ]
+        
+        tenants = ["글로벌 콜센터", "스마트 상담봇", "음성 분석 서비스", "AI 어드바이저", "개발 테스트"]
+        
+        alerts = []
+        for i in range(12):
+            alert_time = datetime.now() - timedelta(minutes=random.randint(1, 1440))
+            alerts.append({
+                "id": i + 1,
+                "type": random.choice(alert_types),
+                "severity": random.choice(["low", "medium", "high", "critical"]),
+                "message": random.choice(alert_messages),
+                "tenant": random.choice(tenants),
+                "timestamp": alert_time.isoformat(),
+                "resolved": random.random() > 0.6,
+                "acknowledged": random.random() > 0.4
+            })
+        
+        return {
+            "success": True,
+            "alerts": sorted(alerts, key=lambda x: x["timestamp"], reverse=True),
+            "summary": {
+                "total": len(alerts),
+                "unresolved": len([a for a in alerts if not a["resolved"]]),
+                "critical": len([a for a in alerts if a["severity"] == "critical"]),
+                "last_24h": len([a for a in alerts if (datetime.now() - datetime.fromisoformat(a["timestamp"])).days == 0])
+            }
+        }
+        
+    except Exception as e:
+        logger.error("모니터링 알림 조회 실패", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"모니터링 알림 조회 중 오류가 발생했습니다: {str(e)}"
+        )
