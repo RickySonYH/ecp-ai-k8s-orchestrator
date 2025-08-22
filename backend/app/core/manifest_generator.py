@@ -46,11 +46,13 @@ class ManifestGenerator:
     
     def generate_tenant_manifests(self, tenant_specs: TenantSpecs) -> Dict[str, str]:
         """
-        테넌시 전체 매니페스트 생성
+        테넌시 전체 매니페스트 생성 (실제 서버 구성 기반)
+        [advice from AI] 실제 하드웨어 스펙 계산과 일치하도록 매니페스트 생성 수정
         """
         logger.info("테넌시 매니페스트 생성 시작", tenant_id=tenant_specs.tenant_id)
         
         manifests = {}
+        service_count = 3
         
         # 1. 네임스페이스
         manifests["01-namespace.yaml"] = self._generate_namespace(tenant_specs)
@@ -58,36 +60,98 @@ class ManifestGenerator:
         # 2. ConfigMap
         manifests["02-configmap.yaml"] = self._generate_configmap(tenant_specs)
         
-        # 3. 서비스별 매니페스트 (기본 서비스들)
-        service_count = 3
+        # 3. GPU 전용 서비스들 (실제 서버 구성 반영)
+        gpu_services = ["tts-server", "nlp-server", "aicm-server"]
+        for gpu_service in gpu_services:
+            if self._should_create_gpu_service(tenant_specs, gpu_service):
+                # Deployment
+                manifests[f"{service_count:02d}-{gpu_service}-deployment.yaml"] = \
+                    self._generate_gpu_deployment(tenant_specs, gpu_service)
+                
+                # Service
+                manifests[f"{service_count:02d}-{gpu_service}-service.yaml"] = \
+                    self._generate_service(tenant_specs, gpu_service)
+                
+                # HPA (GPU 서비스는 제한적 스케일링)
+                manifests[f"{service_count:02d}-{gpu_service}-hpa.yaml"] = \
+                    self._generate_gpu_hpa(tenant_specs, gpu_service)
+                
+                service_count += 1
         
-        # 기본 서비스들 생성
-        basic_services = ["callbot", "chatbot", "advisor", "stt", "tts", "ta", "qa"]
-        for service_name in basic_services:
+        # 4. CPU 전용 서비스들 (음성/텍스트 처리)
+        cpu_services = ["stt-server", "ta-server", "qa-server"]
+        for cpu_service in cpu_services:
+            if self._should_create_cpu_service(tenant_specs, cpu_service):
+                # Deployment
+                manifests[f"{service_count:02d}-{cpu_service}-deployment.yaml"] = \
+                    self._generate_cpu_deployment(tenant_specs, cpu_service)
+                
+                # Service
+                manifests[f"{service_count:02d}-{cpu_service}-service.yaml"] = \
+                    self._generate_service(tenant_specs, cpu_service)
+                
+                # HPA
+                manifests[f"{service_count:02d}-{cpu_service}-hpa.yaml"] = \
+                    self._generate_hpa(tenant_specs, cpu_service)
+                
+                service_count += 1
+        
+        # 5. 애플리케이션 서비스들 (기존 서비스 유지)
+        app_services = ["callbot", "chatbot", "advisor"]
+        for app_service in app_services:
             # Deployment
-            manifests[f"{service_count:02d}-{service_name}-deployment.yaml"] = \
-                self._generate_deployment(tenant_specs, service_name)
+            manifests[f"{service_count:02d}-{app_service}-deployment.yaml"] = \
+                self._generate_deployment(tenant_specs, app_service)
             
             # Service
-            manifests[f"{service_count:02d}-{service_name}-service.yaml"] = \
-                self._generate_service(tenant_specs, service_name)
+            manifests[f"{service_count:02d}-{app_service}-service.yaml"] = \
+                self._generate_service(tenant_specs, app_service)
             
-            # HPA (기본적으로 활성화)
-            manifests[f"{service_count:02d}-{service_name}-hpa.yaml"] = \
-                self._generate_hpa(tenant_specs, service_name)
+            # HPA
+            manifests[f"{service_count:02d}-{app_service}-hpa.yaml"] = \
+                self._generate_hpa(tenant_specs, app_service)
             
             service_count += 1
         
-        # 4. 네트워크 정책
+        # 6. 인프라 서비스들 (실제 서버 구성 반영)
+        infra_services = ["nginx", "api-gateway", "postgresql", "auth-service"]
+        for infra_service in infra_services:
+            # Deployment
+            manifests[f"{service_count:02d}-{infra_service}-deployment.yaml"] = \
+                self._generate_infra_deployment(tenant_specs, infra_service)
+            
+            # Service
+            manifests[f"{service_count:02d}-{infra_service}-service.yaml"] = \
+                self._generate_service(tenant_specs, infra_service)
+            
+            service_count += 1
+        
+        # 7. VectorDB (어드바이저용)
+        if tenant_specs.total_channels > 0:  # 어드바이저가 있는 경우
+            manifests[f"{service_count:02d}-vectordb-deployment.yaml"] = \
+                self._generate_infra_deployment(tenant_specs, "vectordb")
+            manifests[f"{service_count:02d}-vectordb-service.yaml"] = \
+                self._generate_service(tenant_specs, "vectordb")
+            service_count += 1
+        
+        # 8. 스토리지 (NAS)
+        manifests[f"{service_count:02d}-storage-pvc.yaml"] = \
+            self._generate_storage_pvc(tenant_specs)
+        service_count += 1
+        
+        # 9. 네트워크 정책
         manifests["90-networkpolicy.yaml"] = self._generate_networkpolicy(tenant_specs)
         
-        # 5. 모니터링 설정
+        # 10. 모니터링 설정
         manifests["91-monitoring.yaml"] = self._generate_monitoring(tenant_specs)
         
         logger.info(
             "테넌시 매니페스트 생성 완료",
             tenant_id=tenant_specs.tenant_id,
-            manifest_count=len(manifests)
+            manifest_count=len(manifests),
+            gpu_services=len([s for s in gpu_services if self._should_create_gpu_service(tenant_specs, s)]),
+            cpu_services=len([s for s in cpu_services if self._should_create_cpu_service(tenant_specs, s)]),
+            infra_services=len(infra_services) + 1  # +1 for VectorDB
         )
         
         return manifests
@@ -290,6 +354,379 @@ spec:
 """
         
         return basic_deployment
+    
+    def _should_create_gpu_service(self, tenant_specs: TenantSpecs, gpu_service: str) -> bool:
+        """
+        [advice from AI] GPU 서비스 생성 필요 여부 판단
+        """
+        if gpu_service == "tts-server":
+            # TTS 채널이 있는 경우 (콜봇 + 독립 TTS)
+            return tenant_specs.total_channels > 0
+        elif gpu_service == "nlp-server":
+            # NLP 처리가 필요한 서비스가 있는 경우
+            return tenant_specs.total_users > 0 or tenant_specs.total_channels > 0
+        elif gpu_service == "aicm-server":
+            # AICM 검색이 필요한 서비스가 있는 경우
+            return tenant_specs.total_channels > 0
+        return False
+    
+    def _should_create_cpu_service(self, tenant_specs: TenantSpecs, cpu_service: str) -> bool:
+        """
+        [advice from AI] CPU 서비스 생성 필요 여부 판단
+        """
+        if cpu_service == "stt-server":
+            # STT 처리가 필요한 채널이 있는 경우
+            return tenant_specs.total_channels > 0
+        elif cpu_service == "ta-server":
+            # 분석 처리가 필요한 경우
+            return tenant_specs.total_channels > 0 or tenant_specs.total_users > 0
+        elif cpu_service == "qa-server":
+            # 품질 관리가 필요한 경우
+            return tenant_specs.total_channels > 0 or tenant_specs.total_users > 0
+        return False
+    
+    def _generate_gpu_deployment(self, tenant_specs: TenantSpecs, gpu_service: str) -> str:
+        """
+        [advice from AI] GPU 전용 서비스 Deployment 생성
+        """
+        gpu_type_str = tenant_specs.gpu_type.value if hasattr(tenant_specs.gpu_type, 'value') else str(tenant_specs.gpu_type)
+        
+        # GPU 서비스별 리소스 설정
+        gpu_resources = {
+            "tts-server": {"gpu_count": 1, "cpu": "2000m", "memory": "4Gi"},
+            "nlp-server": {"gpu_count": 1, "cpu": "4000m", "memory": "8Gi"},
+            "aicm-server": {"gpu_count": 1, "cpu": "2000m", "memory": "6Gi"}
+        }
+        
+        resource_config = gpu_resources.get(gpu_service, {"gpu_count": 1, "cpu": "2000m", "memory": "4Gi"})
+        
+        return f"""---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {gpu_service}
+  namespace: {tenant_specs.tenant_id}-ecp-ai
+  labels:
+    app: {gpu_service}
+    tenant: {tenant_specs.tenant_id}
+    tier: gpu
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {gpu_service}
+      tenant: {tenant_specs.tenant_id}
+  template:
+    metadata:
+      labels:
+        app: {gpu_service}
+        tenant: {tenant_specs.tenant_id}
+        tier: gpu
+        monitoring: enabled
+    spec:
+      nodeSelector:
+        accelerator: nvidia-{gpu_type_str}
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Equal
+        value: present
+        effect: NoSchedule
+      containers:
+      - name: {gpu_service}
+        image: ecp-ai/{gpu_service}:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: TENANT_ID
+          value: {tenant_specs.tenant_id}
+        - name: SERVICE_NAME
+          value: {gpu_service}
+        - name: GPU_TYPE
+          value: {gpu_type_str}
+        resources:
+          requests:
+            nvidia.com/gpu: {resource_config["gpu_count"]}
+            cpu: {resource_config["cpu"]}
+            memory: {resource_config["memory"]}
+          limits:
+            nvidia.com/gpu: {resource_config["gpu_count"]}
+            cpu: {int(resource_config["cpu"].replace("m", "")) * 2}m
+            memory: {int(resource_config["memory"].replace("Gi", "")) * 2}Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+"""
+    
+    def _generate_cpu_deployment(self, tenant_specs: TenantSpecs, cpu_service: str) -> str:
+        """
+        [advice from AI] CPU 전용 서비스 Deployment 생성
+        """
+        # CPU 서비스별 리소스 설정
+        cpu_resources = {
+            "stt-server": {"cpu": "4000m", "memory": "8Gi", "replicas": 2},
+            "ta-server": {"cpu": "2000m", "memory": "4Gi", "replicas": 1},
+            "qa-server": {"cpu": "1000m", "memory": "2Gi", "replicas": 1}
+        }
+        
+        resource_config = cpu_resources.get(cpu_service, {"cpu": "1000m", "memory": "2Gi", "replicas": 1})
+        
+        return f"""---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {cpu_service}
+  namespace: {tenant_specs.tenant_id}-ecp-ai
+  labels:
+    app: {cpu_service}
+    tenant: {tenant_specs.tenant_id}
+    tier: cpu
+spec:
+  replicas: {resource_config["replicas"]}
+  selector:
+    matchLabels:
+      app: {cpu_service}
+      tenant: {tenant_specs.tenant_id}
+  template:
+    metadata:
+      labels:
+        app: {cpu_service}
+        tenant: {tenant_specs.tenant_id}
+        tier: cpu
+        monitoring: enabled
+    spec:
+      containers:
+      - name: {cpu_service}
+        image: ecp-ai/{cpu_service}:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: TENANT_ID
+          value: {tenant_specs.tenant_id}
+        - name: SERVICE_NAME
+          value: {cpu_service}
+        resources:
+          requests:
+            cpu: {resource_config["cpu"]}
+            memory: {resource_config["memory"]}
+          limits:
+            cpu: {int(resource_config["cpu"].replace("m", "")) * 2}m
+            memory: {int(resource_config["memory"].replace("Gi", "")) * 2}Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+"""
+    
+    def _generate_infra_deployment(self, tenant_specs: TenantSpecs, infra_service: str) -> str:
+        """
+        [advice from AI] 인프라 서비스 Deployment 생성
+        """
+        # 인프라 서비스별 설정
+        infra_configs = {
+            "nginx": {
+                "image": "nginx:1.21-alpine",
+                "port": 80,
+                "cpu": "500m",
+                "memory": "1Gi",
+                "replicas": 2
+            },
+            "api-gateway": {
+                "image": "ecp-ai/api-gateway:latest",
+                "port": 8080,
+                "cpu": "1000m",
+                "memory": "2Gi",
+                "replicas": 2
+            },
+            "postgresql": {
+                "image": "postgres:13-alpine",
+                "port": 5432,
+                "cpu": "2000m",
+                "memory": "4Gi",
+                "replicas": 1
+            },
+            "auth-service": {
+                "image": "ecp-ai/auth-service:latest",
+                "port": 8080,
+                "cpu": "500m",
+                "memory": "1Gi",
+                "replicas": 1
+            },
+            "vectordb": {
+                "image": "qdrant/qdrant:latest",
+                "port": 6333,
+                "cpu": "1000m",
+                "memory": "2Gi",
+                "replicas": 1
+            }
+        }
+        
+        config = infra_configs.get(infra_service, infra_configs["nginx"])
+        
+        env_vars = ""
+        if infra_service == "postgresql":
+            env_vars = f"""
+        - name: POSTGRES_DB
+          value: {tenant_specs.tenant_id}_db
+        - name: POSTGRES_USER
+          value: ecp_user
+        - name: POSTGRES_PASSWORD
+          value: ecp_password"""
+        elif infra_service == "auth-service":
+            env_vars = f"""
+        - name: JWT_SECRET
+          value: ecp-jwt-secret-{tenant_specs.tenant_id}
+        - name: DB_HOST
+          value: postgresql-service"""
+        
+        return f"""---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {infra_service}
+  namespace: {tenant_specs.tenant_id}-ecp-ai
+  labels:
+    app: {infra_service}
+    tenant: {tenant_specs.tenant_id}
+    tier: infrastructure
+spec:
+  replicas: {config["replicas"]}
+  selector:
+    matchLabels:
+      app: {infra_service}
+      tenant: {tenant_specs.tenant_id}
+  template:
+    metadata:
+      labels:
+        app: {infra_service}
+        tenant: {tenant_specs.tenant_id}
+        tier: infrastructure
+        monitoring: enabled
+    spec:
+      containers:
+      - name: {infra_service}
+        image: {config["image"]}
+        ports:
+        - containerPort: {config["port"]}
+        env:
+        - name: TENANT_ID
+          value: {tenant_specs.tenant_id}{env_vars}
+        resources:
+          requests:
+            cpu: {config["cpu"]}
+            memory: {config["memory"]}
+          limits:
+            cpu: {int(config["cpu"].replace("m", "")) * 2}m
+            memory: {int(config["memory"].replace("Gi", "")) * 2}Gi
+        livenessProbe:
+          tcpSocket:
+            port: {config["port"]}
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: {config["port"]}
+          initialDelaySeconds: 10
+          periodSeconds: 5
+"""
+    
+    def _generate_gpu_hpa(self, tenant_specs: TenantSpecs, gpu_service: str) -> str:
+        """
+        [advice from AI] GPU 서비스용 제한적 HPA 생성
+        """
+        return f"""---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {gpu_service}-hpa
+  namespace: {tenant_specs.tenant_id}-ecp-ai
+  labels:
+    app: {gpu_service}
+    tenant: {tenant_specs.tenant_id}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {gpu_service}
+  minReplicas: 1
+  maxReplicas: 3  # GPU 서비스는 제한적 스케일링
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80  # GPU 서비스는 높은 임계값
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 300  # 더 긴 안정화 시간
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 300
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 300
+"""
+    
+    def _generate_storage_pvc(self, tenant_specs: TenantSpecs) -> str:
+        """
+        [advice from AI] 스토리지 PVC 생성
+        """
+        storage_size = f"{max(100, tenant_specs.storage_gb)}Gi"
+        
+        return f"""---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ecp-storage-pvc
+  namespace: {tenant_specs.tenant_id}-ecp-ai
+  labels:
+    tenant: {tenant_specs.tenant_id}
+    tier: storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {storage_size}
+  storageClassName: fast-ssd
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ecp-logs-pvc
+  namespace: {tenant_specs.tenant_id}-ecp-ai
+  labels:
+    tenant: {tenant_specs.tenant_id}
+    tier: storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard
+"""
     
     def _generate_service(self, tenant_specs: TenantSpecs, service_name: str) -> str:
         """Service 매니페스트 생성"""

@@ -172,11 +172,18 @@ class TenantManager:
             "total": 0
         }
         
-        # 1. TTS GPU 계산 (캐시 최적화 적용)
+        # 1. TTS GPU 계산 (실제 채널 기반)
+        # [advice from AI] 콜봇은 이미 TTS 포함, 독립 TTS만 별도 추가
         tts_channels = service_requirements.get("callbot", 0) + service_requirements.get("tts", 0)
         if tts_channels > 0:
-            # T4 기준: 캐시 최적화로 50채널/GPU
-            gpu_needs["tts"] = max(1, (tts_channels + 49) // 50)
+            # 실제 처리 용량 기반 계산 (L40S: 200채널/GPU, V100: 150채널/GPU, T4: 50채널/GPU)
+            # 작은 규모에서는 최소 1GPU 보장, 큰 규모에서는 효율적 분산
+            if tts_channels <= 50:  # T4로도 충분
+                gpu_needs["tts"] = 1  # 최소 1GPU
+            elif tts_channels <= 150:  # V100 권장
+                gpu_needs["tts"] = max(1, (tts_channels + 149) // 150)
+            else:  # L40S 권장
+                gpu_needs["tts"] = max(1, (tts_channels + 199) // 200)
         
         # 2. NLP GPU 계산 (일일 쿼리 기반)
         total_nlp_queries_daily = 0
@@ -331,53 +338,43 @@ class TenantManager:
                                  gpu_type: str,
                                  workload_requirements: Dict[str, int]) -> float:
         """
-        동적 GPU RAM 할당 계산
-        워크로드 강도 기반 RAM 할당
+        [advice from AI] 동적 GPU RAM 할당 계산 - 보수적 접근으로 수정
+        실제 필요량 기반으로 과도한 RAM 할당 방지
         """
-        if gpu_type not in self.service_matrix["gpu_profiles"]:
+        # GPU별 기본 RAM (실제 GPU 메모리 + 시스템 RAM)
+        gpu_ram_specs = {
+            "t4": {"gpu_memory": 16, "system_ram": 32, "total": 48},      # T4 16GB + 32GB RAM
+            "v100": {"gpu_memory": 32, "system_ram": 32, "total": 64},    # V100 32GB + 32GB RAM  
+            "l40s": {"gpu_memory": 48, "system_ram": 32, "total": 80}     # L40S 48GB + 32GB RAM
+        }
+        
+        if gpu_type not in gpu_ram_specs:
             gpu_type = "t4"  # 기본값
         
-        ram_config = self.service_matrix["gpu_profiles"][gpu_type]["ram_allocation"]
-        base_ram = ram_config["base_ram"]
-        min_multiplier, max_multiplier = ram_config["workload_multiplier_range"]
-        max_ram_limit = ram_config["max_ram_limit"]
+        # 기본 RAM 사용 (GPU 메모리 + 적절한 시스템 RAM)
+        base_total_ram = gpu_ram_specs[gpu_type]["total"]
         
-        # 워크로드 강도 계산
+        # 워크로드 강도 계산 (보수적)
         total_channels = self._calculate_total_channels(workload_requirements)
         
-        # TTS 강도
-        tts_intensity = min(1.0, total_channels / 100.0)
+        # 작은 워크로드에서는 기본 RAM 사용, 큰 워크로드에서만 소폭 증가
+        if total_channels <= 10:
+            # 소규모: 기본 RAM
+            final_ram = base_total_ram
+        elif total_channels <= 100:
+            # 중규모: 10% 증가
+            final_ram = int(base_total_ram * 1.1)
+        else:
+            # 대규모: 최대 25% 증가
+            intensity = min(1.0, total_channels / 500.0)
+            multiplier = 1.0 + (0.25 * intensity)  # 최대 1.25배
+            final_ram = int(base_total_ram * multiplier)
         
-        # NLP 강도 (총 일일 쿼리 기준)
-        total_nlp = 0
-        total_nlp += workload_requirements.get("callbot", 0) * 3200
-        total_nlp += workload_requirements.get("chatbot", 0) * 288  
-        total_nlp += workload_requirements.get("advisor", 0) * 2400
-        nlp_intensity = min(1.0, total_nlp / 500000.0)
+        # 최대 제한 (GPU별)
+        max_limits = {"t4": 64, "v100": 80, "l40s": 96}
+        final_ram = min(final_ram, max_limits.get(gpu_type, 64))
         
-        # AICM 강도
-        total_aicm = 0
-        total_aicm += workload_requirements.get("callbot", 0) * 480
-        total_aicm += workload_requirements.get("chatbot", 0) * 24
-        total_aicm += workload_requirements.get("advisor", 0) * 1360
-        aicm_intensity = min(1.0, total_aicm / 300000.0)
-        
-        # 전체 워크로드 강도 (평균)
-        workload_intensity = (tts_intensity + nlp_intensity + aicm_intensity) / 3.0
-        
-        # 가중치 영향도 50%
-        effective_intensity = workload_intensity * 0.5
-        
-        # RAM 배수 계산
-        multiplier = min_multiplier + (max_multiplier - min_multiplier) * effective_intensity
-        final_ram = min(base_ram * multiplier, max_ram_limit)
-        
-        logger.debug(
-            "동적 GPU RAM 할당 계산",
-            gpu_type=gpu_type,
-            workload_intensity=workload_intensity,
-            final_ram=final_ram
-        )
+        logger.info(f"GPU RAM 계산: {gpu_type} - 채널:{total_channels}, 기본:{base_total_ram}GB, 최종:{final_ram}GB")
         
         return final_ram
     
@@ -431,7 +428,8 @@ class TenantManager:
     def generate_tenant_specs(self, 
                              tenant_id: str,
                              service_requirements: Dict[str, int],
-                             gpu_type: str = "auto") -> TenantSpecs:
+                             gpu_type: str = "auto",
+                             cloud_provider: str = "iaas") -> TenantSpecs:
         """
         테넌시 사양 자동 생성
         실제 가중치 반영 및 GPU 타입 자동 선택
@@ -440,7 +438,8 @@ class TenantManager:
             "테넌시 사양 생성 시작",
             tenant_id=tenant_id,
             service_requirements=service_requirements,
-            gpu_type=gpu_type
+            gpu_type=gpu_type,
+            cloud_provider=cloud_provider  # [advice from AI] 클라우드 제공업체 로깅 추가
         )
         
         # 프리셋 자동 감지
@@ -500,8 +499,8 @@ class TenantManager:
         # 스토리지 요구사항 계산 (GB 단위)
         storage_gb = max(100, int(total_users * 10))  # 사용자당 10GB, 최소 100GB
         
-        # GPUType과 PresetType enum으로 변환
-        from app.models.tenant_specs import GPUType, PresetType
+        # GPUType, PresetType, CloudProvider enum으로 변환
+        from app.models.tenant_specs import GPUType, PresetType, CloudProvider
         
         logger.info(
             "Enum 변환 전 값들",
@@ -514,17 +513,20 @@ class TenantManager:
         try:
             gpu_type_enum = GPUType(optimal_gpu_type)
             preset_enum = PresetType(preset)
-            logger.info("Enum 변환 성공", gpu_type_enum=gpu_type_enum, preset_enum=preset_enum)
+            cloud_provider_enum = CloudProvider(cloud_provider)  # [advice from AI] 클라우드 제공업체 enum 변환
+            logger.info("Enum 변환 성공", gpu_type_enum=gpu_type_enum, preset_enum=preset_enum, cloud_provider_enum=cloud_provider_enum)
         except Exception as e:
-            logger.error("Enum 변환 실패", error=str(e), optimal_gpu_type=optimal_gpu_type, preset=preset)
+            logger.error("Enum 변환 실패", error=str(e), optimal_gpu_type=optimal_gpu_type, preset=preset, cloud_provider=cloud_provider)
             # 기본값으로 설정
             gpu_type_enum = GPUType.T4
             preset_enum = PresetType.MICRO
+            cloud_provider_enum = CloudProvider.IAAS
         
         tenant_specs = TenantSpecs(
             tenant_id=tenant_id,
             preset=preset_enum,
             gpu_type=gpu_type_enum,
+            cloud_provider=cloud_provider_enum,  # [advice from AI] 클라우드 제공업체 추가
             total_channels=total_channels,
             total_users=total_users,
             gpu_count=gpu_requirements["total"],

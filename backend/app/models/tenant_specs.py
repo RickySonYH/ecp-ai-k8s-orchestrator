@@ -19,6 +19,13 @@ class GPUType(str, Enum):
     AUTO = "auto"
 
 
+class CloudProvider(str, Enum):
+    """클라우드 제공업체"""
+    AWS = "aws"
+    NCP = "ncp"
+    IAAS = "iaas"  # 기본 IaaS 환경
+
+
 class HealthCheckType(str, Enum):
     """헬스체크 타입"""
     HTTP = "http"
@@ -95,6 +102,7 @@ class TenantSpecs(BaseModel):
     tenant_id: str = Field(..., description="테넌시 ID")
     preset: PresetType = Field(..., description="테넌시 프리셋")
     gpu_type: GPUType = Field(..., description="GPU 타입")
+    cloud_provider: CloudProvider = Field(CloudProvider.IAAS, description="클라우드 제공업체")  # [advice from AI] 클라우드 제공업체 추가
     
     # 리소스 요구사항
     total_channels: int = Field(..., description="총 채널 수")
@@ -143,6 +151,8 @@ class TenantCreateRequest(BaseModel):
     tenant_id: str = Field(..., description="테넌시 ID")
     service_requirements: ServiceRequirements = Field(..., description="서비스 요구사항")
     gpu_type: GPUType = Field(GPUType.AUTO, description="GPU 타입")
+    cloud_provider: CloudProvider = Field(CloudProvider.IAAS, description="클라우드 제공업체")  # [advice from AI] 클라우드 제공업체 선택 추가
+    auto_deploy: bool = Field(True, description="자동 배포 여부")
     
     # 고급 설정 (선택사항)
     environment_variables: Optional[List[EnvironmentVariable]] = Field(None, description="환경변수")

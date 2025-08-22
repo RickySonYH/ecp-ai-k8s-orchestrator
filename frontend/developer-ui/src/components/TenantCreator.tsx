@@ -29,7 +29,8 @@ import {
   Tooltip,
   IconButton,
   Collapse,
-  Dialog
+  Dialog,
+  CircularProgress
 } from '@mui/material';
 import {
   InfoOutlined as InfoIcon,
@@ -93,6 +94,7 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
   // 상태 관리
   const [tenantId, setTenantId] = useState('');
   const [gpuType, setGpuType] = useState<'auto' | 't4' | 'v100' | 'l40s'>('auto');
+  // [advice from AI] 클라우드 제공업체 선택을 매니페스트 생성 후로 이동
   const [services, setServices] = useState<ServiceRequirements>({
     callbot: 0,
     chatbot: 0,
@@ -108,6 +110,7 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
   const [showCalculation, setShowCalculation] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const [showHardwareSpec, setShowHardwareSpec] = useState(false);
+  // [advice from AI] 클라우드 비교 기능 제거 - 매니페스트 생성 후에 선택하도록 변경
 
   // 서비스별 설정 (실제 가중치 반영)
   const serviceConfigs = {
@@ -153,11 +156,60 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
     }
   };
 
+  // [advice from AI] 지원 서비스 설정 - STT/TTS 독립 운영 + TA/QA 품질관리
   const supportServiceConfigs = {
-    stt: { label: 'STT (채널)', description: '독립 음성인식 채널' },
-    tts: { label: 'TTS (채널)', description: '독립 음성합성 채널' },
-    ta: { label: 'TA (분석량)', description: '통계 분석 처리량' },
-    qa: { label: 'QA (평가량)', description: '품질 관리 평가량' }
+    stt: {
+      label: 'STT (독립 채널)',
+      max: 500,
+      marks: [
+        { value: 0, label: '0' },
+        { value: 50, label: '50' },
+        { value: 200, label: '200' },
+        { value: 500, label: '500' }
+      ],
+      step: 5,
+      color: 'info' as const,
+      description: '독립 음성인식 서비스 채널 수'
+    },
+    tts: {
+      label: 'TTS (독립 채널)',
+      max: 500,
+      marks: [
+        { value: 0, label: '0' },
+        { value: 50, label: '50' },
+        { value: 200, label: '200' },
+        { value: 500, label: '500' }
+      ],
+      step: 5,
+      color: 'warning' as const,
+      description: '독립 음성합성 서비스 채널 수'
+    },
+    ta: {
+      label: 'TA (분석 건수)',
+      max: 3000,
+      marks: [
+        { value: 0, label: '0' },
+        { value: 500, label: '500' },
+        { value: 1500, label: '1.5K' },
+        { value: 3000, label: '3K' }
+      ],
+      step: 25,
+      color: 'success' as const,
+      description: '텍스트 분석 일일 처리 건수'
+    },
+    qa: {
+      label: 'QA (평가 건수)',
+      max: 2000,
+      marks: [
+        { value: 0, label: '0' },
+        { value: 300, label: '300' },
+        { value: 1000, label: '1K' },
+        { value: 2000, label: '2K' }
+      ],
+      step: 25,
+      color: 'error' as const,
+      description: '품질 관리 일일 평가 건수'
+    }
   };
 
   // 실시간 리소스 계산 (실제 가중치 기반)
@@ -246,6 +298,10 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
     }));
   };
 
+  // [advice from AI] 클라우드 비교 기능 제거 - 매니페스트 생성 후에 선택하도록 변경
+
+  // [advice from AI] 클라우드 비교 useEffect 제거 - 더 이상 필요하지 않음
+
   // 테넌시 생성 핸들러
   const handleSubmit = async () => {
     if (!tenantId.trim()) {
@@ -273,6 +329,7 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
           tenant_id: tenantId.toLowerCase(),
           service_requirements: services,
           gpu_type: gpuType,
+          // [advice from AI] 클라우드 제공업체는 매니페스트 생성 시에 선택
           auto_deploy: true
         }),
       });
@@ -297,6 +354,7 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
         qa: 0
       });
       setGpuType('auto');
+      setCloudProvider('iaas');  // [advice from AI] 클라우드 제공업체도 초기화
 
     } catch (err) {
       setError(err instanceof Error ? err.message : '테넌시 생성 실패');
@@ -349,7 +407,7 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
               />
             </Grid>
             
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={4}>
               <FormControl fullWidth>
                 <InputLabel>GPU 타입</InputLabel>
                 <Select
@@ -365,16 +423,23 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
                 </Select>
               </FormControl>
             </Grid>
+            
+            {/* [advice from AI] 클라우드 제공업체 선택 제거 - 매니페스트 생성 후에 선택하도록 변경 */}
           </Grid>
 
-          {/* 서비스 설정 - 메인과 지원 서비스를 나란히 배치 */}
+          {/* [advice from AI] 서비스 설정 - 개선된 레이아웃으로 박스 정렬 */}
           <Grid container spacing={3} sx={{ mb: 3 }}>
             {/* 메인 서비스 */}
             <Grid item xs={12} lg={6}>
-              <ServiceSection sx={{ height: '100%' }}>
-                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+              <ServiceSection sx={{ 
+                height: '100%', 
+                minHeight: '400px',
+                display: 'flex',
+                flexDirection: 'column'
+              }}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
                   📞 메인 서비스
-                  <Tooltip title="콜봇, 챗봇, 어드바이저는 ECP-AI의 핵심 서비스입니다">
+                  <Tooltip title="콜봇, 챗봇, 어드바이저, STT, TTS는 ECP-AI의 핵심 서비스입니다">
                     <InfoIcon sx={{ ml: 1, fontSize: 20, color: 'text.secondary' }} />
                   </Tooltip>
                 </Typography>
@@ -437,10 +502,15 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
 
             {/* 지원 서비스 */}
             <Grid item xs={12} lg={6}>
-              <ServiceSection sx={{ height: '100%' }}>
-                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                  🛠️ 지원 서비스 (독립 운영)
-                  <Tooltip title="STT, TTS, TA, QA는 독립적으로 운영되는 지원 서비스입니다">
+              <ServiceSection sx={{ 
+                height: '100%', 
+                minHeight: '400px',
+                display: 'flex',
+                flexDirection: 'column'
+              }}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                  🛠️ 지원 서비스
+                  <Tooltip title="STT, TTS 독립 운영 서비스와 TA, QA 품질 관리 서비스입니다">
                     <InfoIcon sx={{ ml: 1, fontSize: 20, color: 'text.secondary' }} />
                   </Tooltip>
                 </Typography>
@@ -462,15 +532,11 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
                         value={services[key as keyof ServiceRequirements]}
                         onChange={(_, value) => handleServiceChange(key as keyof ServiceRequirements, value as number)}
                         min={0}
-                        max={1000}
+                        max={config.max}
                         step={1}
-                        marks={[
-                          { value: 0, label: '0' },
-                          { value: 250, label: '250' },
-                          { value: 500, label: '500' },
-                          { value: 1000, label: '1K' }
-                        ]}
+                        marks={config.marks}
                         disabled={loading}
+                        color={config.color}
                         sx={{ flex: 1 }}
                         valueLabelDisplay="auto"
                       />
@@ -478,13 +544,13 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
                         type="number"
                         value={services[key as keyof ServiceRequirements]}
                         onChange={(e) => {
-                          const value = Math.max(0, Math.min(1000, parseInt(e.target.value) || 0));
+                          const value = Math.max(0, Math.min(config.max, parseInt(e.target.value) || 0));
                           handleServiceChange(key as keyof ServiceRequirements, value);
                         }}
                         inputProps={{ 
                           min: 0, 
-                          max: 1000, 
-                          step: 1 
+                          max: config.max, 
+                          step: config.step 
                         }}
                         size="small"
                         disabled={loading}
@@ -577,6 +643,8 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
               </Grid>
             </Collapse>
           </Alert>
+
+
 
           {/* 생성 버튼 */}
           <Box sx={{ mt: 4, textAlign: 'center' }}>

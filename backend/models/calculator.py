@@ -442,7 +442,8 @@ class ECPHardwareCalculator:
         return infrastructure
     
     def _calculate_dynamic_gpu_ram(self, base_ram: int, workload_intensity: float, max_ram: int = 80) -> int:
-        """GPU 서버의 RAM을 워크로드 강도에 따라 동적으로 계산합니다.
+        """
+        [advice from AI] GPU 서버의 RAM을 보수적으로 계산 - 과도한 할당 방지
         
         Args:
             base_ram: GPU 기본 RAM (16GB, 32GB, 48GB 등)
@@ -452,22 +453,32 @@ class ECPHardwareCalculator:
         Returns:
             계산된 RAM (GB)
         """
-        # 기본 RAM의 1.25배 ~ 최대 RAM 사이에서 워크로드 강도에 따라 조정 (가중치 절반으로 축소)
-        min_multiplier = 1.25  # 최소 1.25배 (기존 1.5배에서 축소)
-        max_multiplier = max_ram / base_ram  # 최대 배수는 max_ram 기준
+        # 보수적 접근: 기본 RAM + 시스템 RAM만 사용
+        # GPU 메모리는 이미 충분하므로 과도한 시스템 RAM 할당 방지
         
-        # 워크로드 강도에 따른 배수 계산 (가중치 범위 축소)
-        effective_intensity = workload_intensity * 0.5  # 가중치 영향도를 절반으로 축소
-        multiplier = min_multiplier + (max_multiplier - min_multiplier) * effective_intensity
+        # GPU별 적절한 시스템 RAM 할당
+        if base_ram <= 16:  # T4
+            system_ram = 32  # 32GB 시스템 RAM
+        elif base_ram <= 32:  # V100  
+            system_ram = 32  # 32GB 시스템 RAM
+        else:  # L40S
+            system_ram = 32  # 32GB 시스템 RAM
         
-        # 계산된 RAM
-        calculated_ram = int(base_ram * multiplier)
+        # 기본 총 RAM = GPU 메모리 + 시스템 RAM
+        basic_total_ram = base_ram + system_ram
+        
+        # 워크로드가 매우 높은 경우에만 소폭 증가 (최대 10%)
+        if workload_intensity > 0.8:
+            multiplier = 1.0 + (workload_intensity - 0.8) * 0.5  # 최대 1.1배
+            final_ram = int(basic_total_ram * multiplier)
+        else:
+            final_ram = basic_total_ram
         
         # 최대값 제한 적용
-        final_ram = min(calculated_ram, max_ram)
+        final_ram = min(final_ram, max_ram)
         
         # 디버그 로깅
-        logging.info(f"🔧 동적 GPU RAM 계산: base_ram={base_ram}GB, workload_intensity={workload_intensity:.2f}, multiplier={multiplier:.2f}, calculated_ram={calculated_ram}GB, final_ram={final_ram}GB")
+        logging.info(f"🔧 보수적 GPU RAM 계산: GPU메모리={base_ram}GB, 시스템RAM={system_ram}GB, 워크로드강도={workload_intensity:.2f}, 최종RAM={final_ram}GB")
         
         return final_ram
 
@@ -1092,7 +1103,10 @@ class ECPHardwareCalculator:
             return 'AICM 벡터 검색'
     
     def _format_infra_dependency(self, infra_breakdown: Dict, service_name: str) -> str:
-        """인프라 서비스 종속성 정보를 포맷팅"""
+        """
+        [advice from AI] 인프라 서비스별 실제 역할에 맞는 설명 생성
+        각 서버의 구체적인 용도와 처리 대상을 명확히 표시
+        """
         total_channels = infra_breakdown.get('total_channels', 0)
         services = infra_breakdown.get('services', [])
         
@@ -1103,23 +1117,27 @@ class ECPHardwareCalculator:
         
         service_list = [service_names.get(s, s) for s in services if s in service_names]
         
+        # 서버별 구체적인 역할과 처리 대상 명시 (실제 총 채널 수 기반)
         if service_name == 'nginx':
-            purpose = '로드 밸런싱'
-        elif service_name == 'database':
-            purpose = '데이터 저장'
+            return f'로드 밸런싱 (전체 {total_channels}채널 트래픽 분산)'
+        elif service_name == 'database' or service_name == 'postgresql':
+            return f'데이터 저장 (전체 {total_channels}채널: {", ".join(service_list) if service_list else "모든 서비스"}) (총 2.2TB)'
         elif service_name == 'vector_db':
-            purpose = '벡터 검색 (어드바이저 전용)'
+            # VectorDB는 어드바이저 전용이므로 어드바이저 채널만 표시
+            advisor_channels = infra_breakdown.get('advisor', 0)
+            return f'벡터 검색 (어드바이저 전용) (어드바이저 {advisor_channels}채널)'
         elif service_name == 'gateway':
-            purpose = 'API 라우팅'
+            return f'API 라우팅 (전체 {total_channels}채널: {", ".join(service_list) if service_list else "모든 서비스"})'
         elif service_name == 'auth_service':
-            purpose = '인증 관리'
+            return f'인증 관리 (전체 {total_channels}채널: {", ".join(service_list) if service_list else "모든 서비스"})'
+        elif service_name == 'nas':
+            return f'네트워크 스토리지 (전체 {total_channels}채널 데이터) (총 2.2TB)'
         else:
-            purpose = '인프라 지원'
-        
-        if service_list:
-            return f'{purpose} (전체 {total_channels}채널: {", ".join(service_list)})'
-        else:
-            return f'{purpose} (전체 {total_channels}채널)'
+            # 기타 인프라 서비스는 구체적 용도 표시
+            if service_list:
+                return f'인프라 지원 (전체 {total_channels}채널: {", ".join(service_list)})'
+            else:
+                return f'인프라 지원 (전체 {total_channels}채널)'
     
     def _find_optimal_instance_combination(self, required_cores: float, total_channels: int = 0) -> List[Dict[str, int]]:
         """필요한 코어 수에 맞는 최적의 인스턴스 조합 찾기 (서버 대수 최소화 우선)"""

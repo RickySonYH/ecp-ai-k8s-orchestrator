@@ -24,7 +24,13 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  CircularProgress
+  CircularProgress,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -44,6 +50,17 @@ interface ServiceRequirements {
   tts: number;
   ta: number;
   qa: number;
+}
+
+interface CloudInstance {
+  server_type: string;
+  instance_type: string;
+  cpu_cores: number;
+  ram_gb: number;
+  gpu_info?: string;
+  monthly_cost_krw: number;
+  quantity: number;
+  total_cost_krw: number;
 }
 
 interface HardwareSpecCalculatorProps {
@@ -88,6 +105,281 @@ const SpecChip = styled(Chip)(({ theme }) => ({
   margin: theme.spacing(0.5),
   fontWeight: 'bold',
 }));
+
+// [advice from AI] 인라인 하드웨어 추천 컴포넌트
+const HardwareRecommendationDisplay: React.FC<{
+  serviceRequirements: ServiceRequirements & { gpu_type?: string };
+  gpuType: string;
+}> = ({ serviceRequirements, gpuType }) => {
+  const [hardwareData, setHardwareData] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // 하드웨어 계산 API 호출
+  React.useEffect(() => {
+    const fetchHardwareData = async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const response = await fetch(`/api/v1/tenants/calculate-detailed-hardware`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...serviceRequirements,
+            gpu_type: gpuType,
+            include_cloud_mapping: true
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setHardwareData(data);
+        } else {
+          throw new Error('API 호출 실패');
+        }
+      } catch (err) {
+        setError('하드웨어 계산 중 오류가 발생했습니다.');
+        console.error('Hardware calculation error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchHardwareData();
+  }, [serviceRequirements, gpuType]);
+
+  // 로딩 상태
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" py={4}>
+        <CircularProgress />
+        <Typography sx={{ ml: 2 }}>권장 하드웨어 구성</Typography>
+      </Box>
+    );
+  }
+
+  // 에러 상태
+  if (error) {
+    return (
+      <Alert severity="error" sx={{ my: 2 }}>
+        {error}
+      </Alert>
+    );
+  }
+
+  // 데이터가 없는 경우
+  if (!hardwareData) {
+    return (
+      <Alert severity="info" sx={{ my: 2 }}>
+        하드웨어 구성 데이터를 불러올 수 없습니다.
+      </Alert>
+    );
+  }
+
+  const { hardware_specification, aws_instances, ncp_instances, cost_analysis } = hardwareData;
+
+  // 비용 포맷팅
+  const formatCurrency = (amount: number) => {
+    return `₩${amount.toLocaleString()}`;
+  };
+
+  const gpuServers = hardware_specification.gpu_servers || [];
+  const cpuServers = hardware_specification.cpu_servers || [];
+  const infraServers = hardware_specification.infrastructure_servers || [];
+  
+  console.log('Hardware Data:', { gpuServers, cpuServers, infraServers, aws_instances, ncp_instances });
+
+  return (
+    <Box>
+      {/* 제목 */}
+      <Typography variant="h5" gutterBottom sx={{ mb: 3, fontWeight: 'bold', textAlign: 'center' }}>
+        📊 권장 하드웨어 구성
+      </Typography>
+
+      {/* AI 처리 서버 섹션 */}
+      {gpuServers.length > 0 && (
+        <Card sx={{ mb: 2 }}>
+          <Box sx={{ backgroundColor: '#4caf50', color: 'white', p: 2, fontWeight: 'bold' }}>
+            AI 처리 서버
+          </Box>
+          <CardContent>
+            {gpuServers.map((server: any, index: number) => (
+              <Paper key={index} sx={{ p: 2, mb: 1, border: '1px solid #e0e0e0' }}>
+                <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#4caf50', mb: 1 }}>
+                  {server.name} x {server.quantity}대
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  <strong>CPU:</strong> {server.cpu_cores}코어, <strong>RAM:</strong> {server.ram_gb}GB, <strong>GPU:</strong> {server.gpu_type || 'T4'} {server.gpu_quantity || 1}개, <strong>스토리지:</strong> {server.storage_gb < 1000 ? server.storage_gb + 'GB' : (server.storage_gb/1000).toFixed(1) + 'TB'}
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#1976d2', fontStyle: 'italic' }}>
+                  용도: {server.purpose}
+                </Typography>
+              </Paper>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 음성/텍스트 처리 서버 섹션 */}
+      {cpuServers.length > 0 && (
+        <Card sx={{ mb: 2 }}>
+          <Box sx={{ backgroundColor: '#ff9800', color: 'white', p: 2, fontWeight: 'bold' }}>
+            음성/텍스트 처리 서버
+          </Box>
+          <CardContent>
+            {cpuServers.map((server: any, index: number) => (
+              <Paper key={index} sx={{ p: 2, mb: 1, border: '1px solid #e0e0e0' }}>
+                <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#ff9800', mb: 1 }}>
+                  {server.name} x {server.quantity}대
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  <strong>CPU:</strong> {server.cpu_cores}코어, <strong>RAM:</strong> {server.ram_gb}GB, <strong>스토리지:</strong> {server.storage_gb < 1000 ? server.storage_gb + 'GB' : (server.storage_gb/1000).toFixed(1) + 'TB'} (SSD)
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#1976d2', fontStyle: 'italic' }}>
+                  용도: {server.purpose}
+                </Typography>
+              </Paper>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 공통 서비스 서버 섹션 */}
+      {infraServers.length > 0 && (
+        <Card sx={{ mb: 2 }}>
+          <Box sx={{ backgroundColor: '#607d8b', color: 'white', p: 2, fontWeight: 'bold' }}>
+            공통 서비스 서버
+          </Box>
+          <CardContent>
+            {infraServers.map((server: any, index: number) => (
+              <Paper key={index} sx={{ p: 2, mb: 1, border: '1px solid #e0e0e0' }}>
+                <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#607d8b', mb: 1 }}>
+                  {server.name} x {server.quantity}대
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  <strong>CPU:</strong> {server.cpu_cores}코어, <strong>RAM:</strong> {server.ram_gb}GB, <strong>스토리지:</strong> {server.storage_gb < 1000 ? server.storage_gb + 'GB' : (server.storage_gb/1000).toFixed(1) + 'TB'} (SSD)
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#1976d2', fontStyle: 'italic' }}>
+                  용도: {server.purpose}
+                </Typography>
+              </Paper>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* AWS 인스턴스 매핑 */}
+      {aws_instances && aws_instances.length > 0 && (
+        <Card sx={{ mb: 2 }}>
+          <Box sx={{ backgroundColor: '#ff9800', color: 'white', p: 2, fontWeight: 'bold' }}>
+            ☁️ AWS 인스턴스 매핑
+          </Box>
+          <CardContent>
+            {aws_instances.map((instance: any, index: number) => (
+              <Paper key={index} sx={{ p: 2, mb: 1, border: '1px solid #e0e0e0' }}>
+                <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#ff9800', mb: 1 }}>
+                  {instance.server_type} → {instance.instance_type} x {instance.quantity}대
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  <strong>AWS 사양:</strong> CPU: {instance.cpu_cores}코어, RAM: {instance.ram_gb}GB
+                  {instance.gpu_info && <>, GPU: {instance.gpu_info}</>}
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#2e7d32', fontWeight: 'bold' }}>
+                  월간 비용: {formatCurrency(instance.total_cost_krw)}
+                </Typography>
+              </Paper>
+            ))}
+            <Box sx={{ mt: 2, p: 2, backgroundColor: '#fff3e0', borderRadius: 1, textAlign: 'center' }}>
+              <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#2e7d32' }}>
+                AWS 총 월간 비용: {formatCurrency(cost_analysis?.aws_total_monthly_cost || 0)}
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* NCP 인스턴스 매핑 */}
+      {ncp_instances && ncp_instances.length > 0 && (
+        <Card sx={{ mb: 2 }}>
+          <Box sx={{ backgroundColor: '#4caf50', color: 'white', p: 2, fontWeight: 'bold' }}>
+            🌐 NCP 인스턴스 매핑
+          </Box>
+          <CardContent>
+            {ncp_instances.map((instance: any, index: number) => (
+              <Paper key={index} sx={{ p: 2, mb: 1, border: '1px solid #e0e0e0' }}>
+                <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#4caf50', mb: 1 }}>
+                  {instance.server_type} → {instance.instance_type} x {instance.quantity}대
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  <strong>NCP 사양:</strong> CPU: {instance.cpu_cores}코어, RAM: {instance.ram_gb}GB
+                  {instance.gpu_info && <>, GPU: {instance.gpu_info}</>}
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#388e3c', fontWeight: 'bold' }}>
+                  월간 비용: {formatCurrency(instance.total_cost_krw)}
+                </Typography>
+              </Paper>
+            ))}
+            <Box sx={{ mt: 2, p: 2, backgroundColor: '#e8f5e8', borderRadius: 1, textAlign: 'center' }}>
+              <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#388e3c' }}>
+                NCP 총 월간 비용: {formatCurrency(cost_analysis?.ncp_total_monthly_cost || 0)}
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 비용 비교 요약 */}
+      {cost_analysis && (
+        <Card sx={{ mb: 2 }}>
+          <Box sx={{ backgroundColor: '#2196f3', color: 'white', p: 2, fontWeight: 'bold' }}>
+            💰 비용 비교 요약
+          </Box>
+          <CardContent>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={4}>
+                <Paper sx={{ p: 2, textAlign: 'center', backgroundColor: '#fff3e0' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#ff9800' }}>
+                    AWS 총 비용
+                  </Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#2e7d32' }}>
+                    {formatCurrency(cost_analysis.aws_total_monthly_cost)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">월간</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Paper sx={{ p: 2, textAlign: 'center', backgroundColor: '#e8f5e8' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#4caf50' }}>
+                    NCP 총 비용
+                  </Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#388e3c' }}>
+                    {formatCurrency(cost_analysis.ncp_total_monthly_cost)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">월간</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Paper sx={{ p: 2, textAlign: 'center', backgroundColor: cost_analysis.cost_difference > 0 ? '#ffebee' : '#e8f5e8' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 'bold', color: cost_analysis.cost_difference > 0 ? '#d32f2f' : '#388e3c' }}>
+                    비용 차이
+                  </Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 'bold', color: cost_analysis.cost_difference > 0 ? '#d32f2f' : '#388e3c' }}>
+                    {formatCurrency(Math.abs(cost_analysis.cost_difference))}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {cost_analysis.cost_difference > 0 ? 'AWS가 더 저렴' : 'NCP가 더 저렴'}
+                  </Typography>
+                </Paper>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+      )}
+
+    </Box>
+  );
+};
 
 export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
   serviceRequirements,
@@ -308,7 +600,7 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
       cpu_cores: nginxCores,
       ram_gb: nginxCores * 2,
       storage_gb: 500,
-      description: '로드 밸런싱 (전체 3200채널: 콜봇, 챗봇, 어드바이저, STT, TTS, TA, QA)',
+      description: `로드 밸런싱 (전체 ${totalChannels}채널 트래픽 분산)`,
       services: ['Nginx']
     });
     
@@ -321,7 +613,7 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
       cpu_cores: gatewayCores,
       ram_gb: gatewayCores * 2,
       storage_gb: 500,
-      description: 'API 라우팅 (전체 3200채널: 콜봇, 챗봇, 어드바이저, STT, TTS, TA, QA) (총 64코어)',
+      description: `API 라우팅 (전체 ${totalChannels}채널 서비스 요청 처리)`,
       services: ['API Gateway']
     });
     
@@ -335,7 +627,7 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
       cpu_cores: dbCores,
       ram_gb: dbCores * 4, // 데이터 서버는 4GB/코어
       storage_gb: dbStorage * 1024, // TB → GB
-      description: `데이터 저장 (전체 3200채널: 콜봇, 챗봇, 어드바이저, STT, TTS, TA, QA) (총 ${dbStorage.toFixed(1)}TB)`,
+      description: `데이터 저장 (전체 ${totalChannels}채널: 콜봇, 챗봇, 어드바이저) (총 ${dbStorage.toFixed(1)}TB)`,
       services: ['PostgreSQL']
     });
     
@@ -349,7 +641,7 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
         cpu_cores: vectordbCores,
         ram_gb: vectordbCores * 4,
         storage_gb: 500,
-        description: `벡터 검색 (어드바이저 전용) (전체 3200채널: 콜봇 ${serviceRequirements.callbot}채널 + 어드바이저 ${serviceRequirements.advisor * 2}채널)`,
+        description: `벡터 검색 (어드바이저 전용) (어드바이저 ${serviceRequirements.advisor}채널)`,
         services: ['VectorDB']
       });
     }
@@ -363,7 +655,7 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
       cpu_cores: authCores,
       ram_gb: authCores * 2,
       storage_gb: 500,
-      description: '인증 관리 (전체 3200채널: 콜봇, 챗봇, 어드바이저, STT, TTS, TA, QA) (총 8코어)',
+      description: `인증 관리 (전체 ${totalChannels}채널: 콜봇, 챗봇, 어드바이저)`,
       services: ['Auth Service']
     });
     
@@ -376,7 +668,7 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
       cpu_cores: 8,
       ram_gb: 16,
       storage_gb: nasStorage * 1024,
-      description: `네트워크 스토리지 (총 유저 3200명, 16.0TB) (총 ${nasStorage.toFixed(1)}TB)`,
+      description: `네트워크 스토리지 (전체 ${totalChannels}채널 데이터) (총 ${nasStorage.toFixed(1)}TB)`,
       services: ['NAS']
     });
     
@@ -421,6 +713,97 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
     }
   };
 
+  // [advice from AI] 계산 엔진 결과 기반 서버 이름 생성
+  const _getServerDisplayName = (spec: any, fallbackType: string) => {
+    // 1. 계산 엔진에서 향상된 서버 이름이 있으면 우선 사용
+    if (spec.type && spec.type.includes('서버') && spec.type.includes('x')) {
+      return spec.type.replace(' x 1대', ''); // 단일 서버인 경우 'x 1대' 제거
+    }
+    
+    // 2. 계산 엔진에서 온 데이터면 그대로 사용
+    if (spec.type && spec.type !== fallbackType) {
+      return spec.type;
+    }
+    
+    // 3. 이름이 명시되어 있으면 사용
+    if (spec.name && !spec.name.includes('서버')) {
+      return spec.name;
+    }
+    
+    // 4. 역할 기반으로 이름 생성 (폴백용)
+    if (spec.purpose) {
+      return spec.purpose;
+    }
+    
+    // 5. 서비스 기반으로 이름 추정 (폴백용)
+    if (spec.services && spec.services.length > 0) {
+      const service = spec.services[0];
+      if (service === 'TTS') return 'TTS 서버 (L40S)';
+      if (service === 'NLP') return 'NLP 서버 (V100)';
+      if (service === 'AICM') return 'AICM 서버 (V100)';
+      if (service === 'STT') return 'STT 서버 (64코어)';
+      if (service === 'TA') return 'TA 서버 (16코어)';
+      if (service === 'QA') return 'QA 서버 (8코어)';
+      if (service === 'Nginx') return 'Nginx 서버 (36코어)';
+      if (service === 'API Gateway') return 'API Gateway 서버 (32코어)';
+      if (service === 'PostgreSQL') return 'PostgreSQL 서버 (64코어)';
+      if (service === 'VectorDB') return 'VectorDB 서버 (16코어)';
+      if (service === 'Auth Service') return 'Auth Service 서버 (8코어)';
+      if (service === 'NAS') return 'NAS 서버 (8코어)';
+    }
+    
+    // 6. 최종 폴백
+    return spec.name || `${fallbackType} 서버`;
+  };
+
+  // [advice from AI] 서버 설명 생성
+  const _getServerDescription = (spec: any, serviceReqs: any) => {
+    // 1. 계산 엔진에서 온 상세 설명이 있으면 우선 사용
+    if (spec.purpose && spec.purpose !== spec.type) {
+      return spec.purpose;
+    }
+    
+    // 2. 기본 설명이 있으면 사용
+    if (spec.description) {
+      return spec.description;
+    }
+    
+    // 3. 처리 용량 정보가 있으면 포함
+    if (spec.processing_capacity) {
+      return `처리 용량: ${spec.processing_capacity}`;
+    }
+    
+    // 4. 서비스 기반으로 설명 생성 (총 채널 수 기반)
+    if (spec.services && spec.services.length > 0) {
+      const service = spec.services[0];
+      
+      // 총 채널 수 계산 (공용 인프라용)
+      const totalChannels = serviceReqs.callbot + serviceReqs.chatbot + 
+                           serviceReqs.advisor + serviceReqs.stt + 
+                           serviceReqs.tts;
+      
+      const descriptions = {
+        'TTS': 'TTS 음성 합성 처리 (콜봇 전용 TTS 채널)',
+        'NLP': '자연어 처리 (콜봇, 챗봇, 어드바이저 쿼리 분석)',
+        'AICM': 'AI 지식 관리 벡터 검색 (RAG 기반 답변 생성)',
+        'STT': '음성 인식 처리 (콜봇, 어드바이저 실시간 음성 변환)',
+        'TA': '통계 분석 배치 처리 (1채널당 1통화 50문장을 1분 이내 처리)',
+        'QA': '품질 관리 평가 (외부 LLM 기반, 내부 GPU 부하 최소)',
+        'Nginx': `로드 밸런싱 (전체 ${totalChannels}채널 트래픽 분산)`,
+        'API Gateway': `API 라우팅 (전체 ${totalChannels}채널 서비스 요청 처리)`,
+        'PostgreSQL': `데이터 저장 (전체 ${totalChannels}채널: 콜봇, 챗봇, 어드바이저) (총 2.2TB)`,
+        'VectorDB': `벡터 검색 (어드바이저 전용) (어드바이저 ${serviceReqs.advisor}채널)`,
+        'Auth Service': `인증 관리 (전체 ${totalChannels}채널: 콜봇, 챗봇, 어드바이저)`,
+        'NAS': `네트워크 스토리지 (전체 ${totalChannels}채널 데이터) (총 2.2TB)`
+      };
+      
+      return descriptions[service] || `${service} 서비스 처리`;
+    }
+    
+    // 5. 최종 폴백
+    return '서버 역할 및 처리 용량 정보';
+  };
+
   // 로딩 상태 처리
   if (loading) {
     return (
@@ -442,7 +825,22 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
 
   return (
     <Box>
-      {/* 계산 엔진 상태 표시 */}
+      {/* 새로운 하드웨어 추천 디스플레이 사용 */}
+      <HardwareRecommendationDisplay 
+        serviceRequirements={{
+          callbot: serviceRequirements.callbot,
+          chatbot: serviceRequirements.chatbot,
+          advisor: serviceRequirements.advisor,
+          standalone_stt: serviceRequirements.stt,
+          standalone_tts: serviceRequirements.tts,
+          ta: serviceRequirements.ta,
+          qa: serviceRequirements.qa,
+          gpu_type: gpuType
+        }}
+        gpuType={gpuType}
+      />
+
+      {/* 기존 계산 엔진 상태 표시 (참고용) */}
       {detailedSpec ? (
         <Alert severity="success" sx={{ mb: 2 }}>
           <Typography variant="body2">
@@ -457,155 +855,7 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
         </Alert>
       )}
 
-      {/* 총 리소스 요약 */}
-      <Card sx={{ mb: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
-        <CardContent>
-          <Typography variant="h5" gutterBottom textAlign="center" fontWeight="bold">
-            📊 권장 하드웨어 구성
-          </Typography>
-          <Grid container spacing={2} textAlign="center">
-            <Grid item xs={3}>
-              <Typography variant="h4" fontWeight="bold">{displayTotalResources.servers || displayTotalResources.total_servers}</Typography>
-              <Typography variant="body2">총 서버</Typography>
-            </Grid>
-            <Grid item xs={3}>
-              <Typography variant="h4" fontWeight="bold">{displayTotalResources.cpu_cores || displayTotalResources.total_cpu_cores}</Typography>
-              <Typography variant="body2">총 CPU 코어</Typography>
-            </Grid>
-            <Grid item xs={3}>
-              <Typography variant="h4" fontWeight="bold">{displayTotalResources.ram_gb || displayTotalResources.total_ram_gb}</Typography>
-              <Typography variant="body2">총 RAM (GB)</Typography>
-            </Grid>
-            <Grid item xs={3}>
-              <Typography variant="h4" fontWeight="bold">{(displayTotalResources.storage_tb || displayTotalResources.total_storage_tb)?.toFixed(1)}</Typography>
-              <Typography variant="body2">총 스토리지 (TB)</Typography>
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
-
-      {/* 서버 타입별 상세 스펙 */}
-      {Object.entries(displayServerGroups).map(([type, specs]) => (
-        specs.length > 0 && (
-          <Accordion key={type} defaultExpanded>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Typography variant="h6" fontWeight="bold">
-                {getServerTypeIcon(type)} {getServerTypeLabel(type)} ({specs.length}종류)
-              </Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Grid container spacing={2}>
-                {specs.map((spec, index) => (
-                  <Grid item xs={12} md={6} key={index}>
-                    <ServerCard serverType={spec.type || type}>
-                      <CardContent>
-                        <Typography variant="h6" gutterBottom fontWeight="bold">
-                          {spec.type || spec.name} x {spec.count}대
-                        </Typography>
-                        
-                        <Box display="flex" flexWrap="wrap" gap={1} mb={2}>
-                          <SpecChip 
-                            icon={<SpeedIcon />}
-                            label={`CPU: ${spec.cpu_cores}코어`}
-                            color="primary"
-                            size="small"
-                          />
-                          <SpecChip 
-                            icon={<MemoryIcon />}
-                            label={`RAM: ${spec.ram_gb}GB`}
-                            color="secondary"
-                            size="small"
-                          />
-                          <SpecChip 
-                            icon={<StorageIcon />}
-                            label={`스토리지: ${(spec.storage_ssd_tb || spec.storage_nvme_tb || spec.storage_gb || 0.5) >= 1 ? 
-                              ((spec.storage_ssd_tb || spec.storage_nvme_tb || spec.storage_gb/1024)).toFixed(1) + 'TB' : 
-                              (spec.storage_gb || 500) + 'GB'}`}
-                            color="info"
-                            size="small"
-                          />
-                          {spec.gpu_per_server && (
-                            <SpecChip 
-                              icon={<CloudIcon />}
-                              label={`GPU: ${spec.gpu_per_server}개`}
-                              color="success"
-                              size="small"
-                            />
-                          )}
-                        </Box>
-                        
-                        <Typography variant="body2" color="text.secondary">
-                          {spec.purpose || spec.description}
-                        </Typography>
-                        
-                        <Divider sx={{ my: 1 }} />
-                        
-                        <Box display="flex" flexWrap="wrap" gap={0.5}>
-                          {(spec.services || ['Service']).map((service) => (
-                            <Chip
-                              key={service}
-                              label={service}
-                              size="small"
-                              variant="outlined"
-                            />
-                          ))}
-                        </Box>
-                      </CardContent>
-                    </ServerCard>
-                  </Grid>
-                ))}
-              </Grid>
-            </AccordionDetails>
-          </Accordion>
-        )
-      ))}
-      
-      {/* 클라우드 비용 분석 (기존 계산 엔진 결과가 있는 경우) */}
-      {detailedSpec?.cost_breakdown && (
-        <Accordion>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="h6" fontWeight="bold">
-              💰 클라우드 비용 분석
-            </Typography>
-          </AccordionSummary>
-          <AccordionDetails>
-            <Grid container spacing={2}>
-              {detailedSpec.cost_breakdown.aws && (
-                <Grid item xs={12} md={6}>
-                  <Paper sx={{ p: 2 }}>
-                    <Typography variant="subtitle1" gutterBottom>AWS 비용</Typography>
-                    <Typography variant="h5" color="primary">
-                      ${detailedSpec.cost_breakdown.aws.total_monthly_cost_usd?.toFixed(0) || 0}/월
-                    </Typography>
-                  </Paper>
-                </Grid>
-              )}
-              {detailedSpec.cost_breakdown.ncp && (
-                <Grid item xs={12} md={6}>
-                  <Paper sx={{ p: 2 }}>
-                    <Typography variant="subtitle1" gutterBottom>NCP 비용</Typography>
-                    <Typography variant="h5" color="secondary">
-                      ₩{detailedSpec.cost_breakdown.ncp.total_monthly_cost_krw?.toLocaleString() || 0}/월
-                    </Typography>
-                  </Paper>
-                </Grid>
-              )}
-            </Grid>
-          </AccordionDetails>
-        </Accordion>
-      )}
-      
-      {/* 주요 계산 근거 */}
-      <Alert severity="info" sx={{ mt: 2 }}>
-        <AlertTitle>💡 계산 근거 (실제 가중치 데이터 기반)</AlertTitle>
-        <Typography variant="body2">
-          • <strong>콜봇</strong>: 일일 3200 NLP쿼리, 480 AICM쿼리 (160콜 × 20쿼리, 160콜 × 3쿼리)<br/>
-          • <strong>챗봇</strong>: 일일 288 NLP쿼리, 24 AICM쿼리 (2.4세션 × 12쿼리, 2.4세션 × 1쿼리)<br/>
-          • <strong>어드바이저</strong>: 일일 2400 NLP쿼리, 1360 AICM쿼리 (160상담 × 15쿼리, 160상담 × 8.5쿼리)<br/>
-          • <strong>STT 처리</strong>: 6.5채널/코어 (콜봇 1:1, 어드바이저 1:2)<br/>
-          • <strong>GPU 배수</strong>: ≤100채널(1.0배), 101-500채널(1.5배), >500채널(2.5배)
-        </Typography>
-      </Alert>
+      {/* 기존 UI는 숨김 - 새로운 HardwareRecommendationDisplay 컴포넌트가 모든 기능을 대체 */}
     </Box>
   );
 };

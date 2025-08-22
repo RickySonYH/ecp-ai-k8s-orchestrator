@@ -224,7 +224,75 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [manifestPreview, setManifestPreview] = useState<ManifestPreview | null>(null);
   const [selectedManifest, setSelectedManifest] = useState<string | null>(null);
+  
+  // [advice from AI] 클라우드 제공업체 선택 상태 추가
+  const [selectedCloudProvider, setSelectedCloudProvider] = useState<'iaas' | 'aws' | 'ncp'>('iaas');
+  
+  // [advice from AI] 환경변수 설정 상태 추가
+  const [envVars, setEnvVars] = useState<{[key: string]: string}>({
+    // 기본 환경변수
+    'OPENAI_API_KEY': '',
+    'DATABASE_URL': 'postgresql://ecp:password@postgres:5432/ecp_db',
+    'REDIS_URL': 'redis://redis:6379/0',
+    'LOG_LEVEL': 'INFO',
+    'ENVIRONMENT': 'production',
+    'JWT_SECRET': '',
+    'ENCRYPTION_KEY': '',
+    'STORAGE_PATH': '/app/data',
+    'MAX_WORKERS': '4',
+    'TIMEOUT_SECONDS': '30'
+  });
+  
+  // [advice from AI] 볼륨 설정 상태 추가
+  const [volumeSettings, setVolumeSettings] = useState({
+    dataVolume: { name: 'ecp-data', size: '50Gi', storageClass: 'gp2' },
+    logsVolume: { name: 'ecp-logs', size: '20Gi', storageClass: 'gp2' },
+    configVolume: { name: 'ecp-config', size: '1Gi', storageClass: 'gp2' }
+  });
+  
+  // [advice from AI] 네트워크 설정 상태 추가
+  const [networkSettings, setNetworkSettings] = useState({
+    serviceType: 'ClusterIP',
+    ingressEnabled: true,
+    tlsEnabled: true,
+    networkPolicy: 'restricted'
+  });
+  
+  // [advice from AI] 헬스체크 설정 상태 추가
+  const [healthSettings, setHealthSettings] = useState({
+    livenessProbe: { enabled: true, path: '/health', initialDelay: 30, period: 10 },
+    readinessProbe: { enabled: true, path: '/ready', initialDelay: 5, period: 5 },
+    startupProbe: { enabled: true, path: '/startup', initialDelay: 10, period: 10 }
+  });
+  
+  // [advice from AI] 하드웨어 계산 결과 상태 추가
+  const [hardwareSpec, setHardwareSpec] = useState<any>(null);
 
+  // [advice from AI] 하드웨어 사양 가져오기
+  useEffect(() => {
+    const fetchHardwareSpec = async () => {
+      try {
+        const response = await fetch('/api/v1/tenants/calculate-detailed-hardware', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...serviceRequirements,
+            gpu_type: gpuType,
+            include_cloud_mapping: true
+          }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setHardwareSpec(data.hardware_specification);
+        }
+      } catch (err) {
+        console.warn('하드웨어 사양 로드 실패:', err);
+      }
+    };
+    
+    fetchHardwareSpec();
+  }, [serviceRequirements, gpuType]);
 
   // 다음 단계로 이동
   const handleNext = async () => {
@@ -245,27 +313,51 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
     setActiveStep((prevActiveStep) => prevActiveStep - 1);
   };
 
-  // 매니페스트 생성
+  // [advice from AI] 매니페스트 생성 - 모든 클라우드 제공업체용 매니페스트 생성
   const generateManifests = async () => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await fetch(`/api/v1/tenants/${tenantId}/generate-manifests`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...serviceRequirements,
-          gpu_type: gpuType
-        }),
+      // 모든 클라우드 제공업체용 매니페스트를 병렬로 생성
+      const cloudProviders = ['iaas', 'aws', 'ncp'];
+      const manifestPromises = cloudProviders.map(async (provider) => {
+        const response = await fetch(`/api/v1/tenants/${tenantId}/generate-manifests`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...serviceRequirements,
+            gpu_type: gpuType,
+            cloud_provider: provider
+          }),
+        });
+
+        if (!response.ok) {
+          console.warn(`${provider} 매니페스트 생성 실패`);
+          return { provider, success: false, error: `${provider} 매니페스트 생성 실패` };
+        }
+
+        const result = await response.json();
+        return { provider, success: true, data: result };
       });
 
-      if (!response.ok) {
-        throw new Error('매니페스트 생성 실패');
+      const results = await Promise.all(manifestPromises);
+      
+      // 성공한 매니페스트들을 통합
+      const successfulResults = results.filter(r => r.success);
+      if (successfulResults.length === 0) {
+        throw new Error('모든 클라우드 제공업체 매니페스트 생성 실패');
       }
 
-      const result = await response.json();
-      setManifestPreview(result);
+      // 첫 번째 성공한 결과를 기본으로 사용하되, 모든 클라우드 제공업체 정보를 포함
+      const combinedResult = {
+        ...successfulResults[0].data,
+        cloud_variants: Object.fromEntries(
+          successfulResults.map(r => [r.provider, r.data])
+        )
+      };
+
+      setManifestPreview(combinedResult);
     } catch (err) {
       setError(err instanceof Error ? err.message : '매니페스트 생성 실패');
     } finally {
@@ -299,14 +391,16 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
   };
 
   // 배포 패키지 다운로드
-  const downloadPackage = async () => {
+  // [advice from AI] 배포 패키지 다운로드 - 선택된 클라우드 제공업체용
+  const downloadPackage = async (cloudProvider: string = selectedCloudProvider) => {
     try {
       const response = await fetch(`/api/v1/tenants/${tenantId}/download-package`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...serviceRequirements,
-          gpu_type: gpuType
+          gpu_type: gpuType,
+          cloud_provider: cloudProvider
         }),
       });
       
@@ -318,7 +412,7 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `ecp-ai-${tenantId}-deployment.zip`;
+      a.download = `ecp-ai-${tenantId}-${cloudProvider}-deployment.zip`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -380,50 +474,189 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
             
             <Grid container spacing={3}>
               <Grid item xs={12} md={6}>
-                <Paper sx={{ p: 2, backgroundColor: 'primary.50' }}>
-                  <Typography variant="subtitle1" gutterBottom fontWeight="bold">
-                    🎯 서비스 구성 요약
+                <Paper sx={{ p: 3, backgroundColor: 'primary.50', border: '1px solid', borderColor: 'primary.200' }}>
+                  <Typography variant="h6" gutterBottom fontWeight="bold" sx={{ color: 'primary.dark', display: 'flex', alignItems: 'center' }}>
+                    🎯 ECP-AI 서비스 아키텍처 구성
+                    <Tooltip title="Enterprise Communication Platform - AI 기반 통합 서비스">
+                      <InfoIcon sx={{ ml: 1, fontSize: 18 }} />
+                    </Tooltip>
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    입력하신 채널 수와 사용자 수를 기반으로 자동 계산된 서비스 구성입니다.
-                  </Typography>
-                  {Object.entries(serviceRequirements).map(([service, count]) => (
-                    (count as number) > 0 && (
-                      <Chip
-                        key={service}
-                        label={`${service}: ${count}`}
-                        variant="outlined"
-                        color="primary"
-                        sx={{ mr: 1, mb: 1 }}
-                      />
-                    )
-                  ))}
+                  
+                  {/* 메인 서비스 */}
+                  {(serviceRequirements.callbot > 0 || serviceRequirements.chatbot > 0 || serviceRequirements.advisor > 0) && (
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1, color: 'success.dark' }}>
+                        📞 핵심 커뮤니케이션 서비스
+                      </Typography>
+                      <Box sx={{ pl: 2 }}>
+                        {serviceRequirements.callbot > 0 && (
+                          <Box sx={{ mb: 1 }}>
+                            <Chip label={`콜봇 ${serviceRequirements.callbot}채널`} color="success" size="small" sx={{ mr: 1 }} />
+                            <Typography variant="caption" color="text.secondary">
+                              → TTS GPU 서버, STT CPU 서버 (전용)
+                            </Typography>
+                          </Box>
+                        )}
+                        {serviceRequirements.chatbot > 0 && (
+                          <Box sx={{ mb: 1 }}>
+                            <Chip label={`챗봇 ${serviceRequirements.chatbot}채널`} color="success" size="small" sx={{ mr: 1 }} />
+                            <Typography variant="caption" color="text.secondary">
+                              → NLP GPU 서버, AICM GPU 서버 (전용)
+                            </Typography>
+                          </Box>
+                        )}
+                        {serviceRequirements.advisor > 0 && (
+                          <Box sx={{ mb: 1 }}>
+                            <Chip label={`어드바이저 ${serviceRequirements.advisor}채널`} color="success" size="small" sx={{ mr: 1 }} />
+                            <Typography variant="caption" color="text.secondary">
+                              → AICM GPU 서버, NLP GPU 서버 (전용)
+                            </Typography>
+                          </Box>
+                        )}
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* 지원 서비스 */}
+                  {(serviceRequirements.ta > 0 || serviceRequirements.qa > 0 || serviceRequirements.stt > 0 || serviceRequirements.tts > 0) && (
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1, color: 'warning.dark' }}>
+                        🛠️ 품질 관리 및 분석 서비스
+                      </Typography>
+                      <Box sx={{ pl: 2 }}>
+                        {serviceRequirements.ta > 0 && (
+                          <Box sx={{ mb: 1 }}>
+                            <Chip label={`TA 분석 ${serviceRequirements.ta}채널`} color="warning" size="small" sx={{ mr: 1 }} />
+                            <Typography variant="caption" color="text.secondary">
+                              → TA CPU 서버 (전용), NLP GPU 서버 연동
+                            </Typography>
+                          </Box>
+                        )}
+                        {serviceRequirements.qa > 0 && (
+                          <Box sx={{ mb: 1 }}>
+                            <Chip label={`QA 평가 ${serviceRequirements.qa}채널`} color="warning" size="small" sx={{ mr: 1 }} />
+                            <Typography variant="caption" color="text.secondary">
+                              → QA CPU 서버 (전용)
+                            </Typography>
+                          </Box>
+                        )}
+                        {serviceRequirements.stt > 0 && (
+                          <Box sx={{ mb: 1 }}>
+                            <Chip label={`독립 STT ${serviceRequirements.stt}채널`} color="info" size="small" sx={{ mr: 1 }} />
+                            <Typography variant="caption" color="text.secondary">
+                              → STT CPU 서버 (독립 운영)
+                            </Typography>
+                          </Box>
+                        )}
+                        {serviceRequirements.tts > 0 && (
+                          <Box sx={{ mb: 1 }}>
+                            <Chip label={`독립 TTS ${serviceRequirements.tts}채널`} color="info" size="small" sx={{ mr: 1 }} />
+                            <Typography variant="caption" color="text.secondary">
+                              → TTS GPU 서버 (독립 운영)
+                            </Typography>
+                          </Box>
+                        )}
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* 인프라 서비스 */}
+                  <Box>
+                    <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1, color: 'info.dark' }}>
+                      🏗️ 공통 인프라스트럭처 서비스 (모든 서비스 공유)
+                    </Typography>
+                    <Box sx={{ pl: 2 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        • <strong>Nginx 서버 (1대):</strong> 로드 밸런서, API Gateway
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        • <strong>PostgreSQL 서버 (1대):</strong> 메타데이터, 사용자 정보
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        • <strong>VectorDB 서버 (1대):</strong> 임베딩 벡터 저장
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        • <strong>Redis 서버 (1대):</strong> 캐싱, 세션 관리
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        • <strong>Auth Service 서버 (1대):</strong> 인증, 권한 관리
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        • <strong>NAS 서버 (1대):</strong> 파일, 모델 저장소
+                      </Typography>
+                    </Box>
+                  </Box>
                 </Paper>
               </Grid>
               
               <Grid item xs={12} md={6}>
-                <Paper sx={{ p: 2, backgroundColor: 'success.50' }}>
-                  <Typography variant="subtitle1" gutterBottom fontWeight="bold">
-                    ⚙️ 자동 설정된 기본값
+                <Paper sx={{ p: 3, backgroundColor: 'success.50', border: '1px solid', borderColor: 'success.200' }}>
+                  <Typography variant="h6" gutterBottom fontWeight="bold" sx={{ color: 'success.dark' }}>
+                    ⚙️ 배포 구성 정보
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    시스템이 자동으로 최적화한 기본 설정입니다.
-                  </Typography>
-                  <Box sx={{ mb: 1 }}>
-                    <Typography variant="body2" fontWeight="bold">
-                      테넌시 ID: <Chip label={tenantId} size="small" color="primary" />
+                  
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1, color: 'primary.dark' }}>
+                      🏷️ 테넌시 식별 정보
                     </Typography>
+                    <Box sx={{ pl: 2 }}>
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>테넌시 ID:</strong> <Chip label={tenantId} size="small" color="primary" variant="outlined" />
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Kubernetes 네임스페이스: ecp-ai-{tenantId}
+                      </Typography>
+                    </Box>
                   </Box>
-                  <Box sx={{ mb: 1 }}>
-                    <Typography variant="body2" fontWeight="bold">
-                      GPU 타입: <Chip label={gpuType} size="small" color="success" />
+
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1, color: 'warning.dark' }}>
+                      🎮 GPU 가속 설정
                     </Typography>
+                    <Box sx={{ pl: 2 }}>
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>GPU 타입:</strong> <Chip label={gpuType.toUpperCase()} size="small" color="warning" variant="outlined" />
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {gpuType === 'auto' ? '자동 선택 (최적 성능/비용)' :
+                         gpuType === 't4' ? 'NVIDIA T4 (가성비 최적화)' :
+                         gpuType === 'v100' ? 'NVIDIA V100 (균형 성능)' :
+                         'NVIDIA L40S (고성능 워크로드)'}
+                      </Typography>
+                    </Box>
                   </Box>
-                  <Box sx={{ mb: 1 }}>
-                    <Typography variant="body2" fontWeight="bold">
-                      프리셋: <Chip label="자동 감지됨" size="small" color="info" />
+
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1, color: 'info.dark' }}>
+                      📊 리소스 최적화 정책
                     </Typography>
+                    <Box sx={{ pl: 2 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        • <strong>스케일링:</strong> HPA (수평 자동 확장)
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        • <strong>리소스 한계:</strong> CPU/Memory 제한 설정
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        • <strong>헬스체크:</strong> Liveness/Readiness Probe
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        • <strong>보안 정책:</strong> RBAC, Network Policy
+                      </Typography>
+                    </Box>
                   </Box>
+
+                  <Alert severity="success" sx={{ mt: 2 }}>
+                    <Typography variant="caption">
+                      <strong>총 예상 서버:</strong> {
+                        hardwareSpec ? (
+                          (hardwareSpec.gpu_servers?.reduce((sum: number, server: any) => sum + (server.quantity || 1), 0) || 0) +
+                          (hardwareSpec.cpu_servers?.reduce((sum: number, server: any) => sum + (server.quantity || 1), 0) || 0) +
+                          (hardwareSpec.infrastructure_servers?.reduce((sum: number, server: any) => sum + (server.quantity || 1), 0) || 0)
+                        ) : '계산 중...'
+                      }대 {hardwareSpec && `(GPU ${hardwareSpec.gpu_servers?.reduce((sum: number, server: any) => sum + (server.quantity || 1), 0) || 0}대 + CPU ${hardwareSpec.cpu_servers?.reduce((sum: number, server: any) => sum + (server.quantity || 1), 0) || 0}대 + 인프라 ${hardwareSpec.infrastructure_servers?.reduce((sum: number, server: any) => sum + (server.quantity || 1), 0) || 0}대)`}
+                    </Typography>
+                  </Alert>
                 </Paper>
               </Grid>
             </Grid>
@@ -454,298 +687,357 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
             </Box>
             
             <Alert severity="info" sx={{ mb: 3 }}>
-              <AlertTitle>💡 환경변수가 필요한 이유</AlertTitle>
+              <AlertTitle>💡 환경변수 설정 가이드</AlertTitle>
               <Typography variant="body2">
-                • <strong>데이터베이스 연결:</strong> DB_HOST, DB_PASSWORD 등<br/>
-                • <strong>API 인증:</strong> API_KEY, SECRET_TOKEN 등<br/>
-                • <strong>환경 설정:</strong> LOG_LEVEL, TIMEZONE 등<br/>
-                • <strong>보안:</strong> 민감한 정보는 Secret으로 관리
+                • <strong>필수 항목:</strong> OPENAI_API_KEY, JWT_SECRET, ENCRYPTION_KEY<br/>
+                • <strong>선택 항목:</strong> 기본값이 설정되어 있으며 필요시 수정 가능<br/>
+                • <strong>보안:</strong> 민감한 정보는 Kubernetes Secret으로 자동 관리
               </Typography>
             </Alert>
             
+            {/* [advice from AI] 실제 환경변수 입력 폼 구현 */}
             <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <Paper sx={{ p: 2, backgroundColor: 'info.50' }}>
-                  <Typography variant="subtitle1" gutterBottom fontWeight="bold">
-                    🔑 자동 생성된 환경변수
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    시스템이 자동으로 생성한 기본 환경변수들입니다.
-                  </Typography>
-                  
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="body2" fontWeight="bold" color="primary">
-                      LOG_LEVEL
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      값: INFO | 설명: 로그 출력 레벨 (DEBUG, INFO, WARN, ERROR)
-                    </Typography>
-                  </Box>
-                  
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="body2" fontWeight="bold" color="primary">
-                      ENVIRONMENT
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      값: development | 설명: 운영 환경 (development, staging, production)
-                    </Typography>
-                  </Box>
-                  
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="body2" fontWeight="bold" color="primary">
-                      TIMEZONE
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      값: Asia/Seoul | 설명: 서버 시간대 설정
-                    </Typography>
-                  </Box>
-                </Paper>
-              </Grid>
-              
-              <Grid item xs={12} md={6}>
-                <Paper sx={{ p: 2, backgroundColor: 'warning.50' }}>
-                  <Typography variant="subtitle1" gutterBottom fontWeight="bold">
-                    ⚠️ 추가 설정이 필요한 환경변수
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    아래 환경변수들은 실제 값으로 설정해야 합니다.
-                  </Typography>
-                  
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="body2" fontWeight="bold" color="warning.main">
-                      CALLBOT_API_KEY
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      설명: 콜봇 서비스 API 키 (실제 값 입력 필요)
-                    </Typography>
-                  </Box>
-                  
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="body2" fontWeight="bold" color="warning.main">
-                      ADVISOR_DB_CONNECTION
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      설명: 어드바이저 데이터베이스 연결 문자열
-                    </Typography>
-                  </Box>
-                </Paper>
-              </Grid>
+              {Object.entries(envVars).map(([key, value]) => {
+                const isRequired = ['OPENAI_API_KEY', 'JWT_SECRET', 'ENCRYPTION_KEY'].includes(key);
+                const isPassword = key.includes('SECRET') || key.includes('KEY') || key.includes('PASSWORD');
+                
+                return (
+                  <Grid item xs={12} md={6} key={key}>
+                    <TextField
+                      fullWidth
+                      label={key}
+                      value={value}
+                      onChange={(e) => setEnvVars(prev => ({...prev, [key]: e.target.value}))}
+                      type={isPassword ? 'password' : 'text'}
+                      required={isRequired}
+                      variant="outlined"
+                      size="small"
+                      helperText={
+                        key === 'OPENAI_API_KEY' ? 'OpenAI API 키 (필수)' :
+                        key === 'DATABASE_URL' ? 'PostgreSQL 연결 문자열' :
+                        key === 'REDIS_URL' ? 'Redis 연결 문자열' :
+                        key === 'JWT_SECRET' ? 'JWT 토큰 서명용 비밀키 (필수)' :
+                        key === 'ENCRYPTION_KEY' ? '데이터 암호화용 키 (필수)' :
+                        key === 'LOG_LEVEL' ? 'DEBUG, INFO, WARN, ERROR 중 선택' :
+                        key === 'ENVIRONMENT' ? 'development, staging, production 중 선택' :
+                        key === 'MAX_WORKERS' ? '워커 프로세스 수' :
+                        key === 'TIMEOUT_SECONDS' ? '요청 타임아웃 (초)' :
+                        '기본값 사용 또는 필요시 수정'
+                      }
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          backgroundColor: isRequired && !value ? 'error.50' : 'background.paper'
+                        }
+                      }}
+                    />
+                  </Grid>
+                );
+              })}
             </Grid>
             
-            <Alert severity="success" sx={{ mt: 3 }}>
-              <AlertTitle>✅ 이 단계에서 하는 일</AlertTitle>
-              <Typography variant="body2">
-                • 기본 환경변수 자동 생성<br/>
-                • 서비스별 필요한 환경변수 확인<br/>
-                • 보안이 중요한 값은 Secret으로 관리<br/>
-                • 애플리케이션 실행 환경 구성
-              </Typography>
-            </Alert>
+            <Box sx={{ mt: 3 }}>
+              <Paper sx={{ p: 2, backgroundColor: 'success.50' }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  ✅ 설정 완료 상태
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  필수 환경변수: {['OPENAI_API_KEY', 'JWT_SECRET', 'ENCRYPTION_KEY'].filter(key => envVars[key]).length}/3 완료<br/>
+                  전체 환경변수: {Object.values(envVars).filter(v => v).length}/{Object.keys(envVars).length} 설정됨
+                </Typography>
+              </Paper>
+            </Box>
           </StepCard>
         );
 
       case 2:
         return (
           <StepCard>
-            <Typography variant="h6" gutterBottom>
-              📦 볼륨 & 스토리지 설정
-            </Typography>
-            {/* 볼륨 및 스토리지 설정 폼 */}
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>볼륨 이름</InputLabel>
-              <Select
-                value=""
-                label="볼륨 이름"
-                onChange={(e) => {}}
-              >
-                <MenuItem value="">선택</MenuItem>
-                <MenuItem value="data-volume">data-volume</MenuItem>
-                <MenuItem value="config-volume">config-volume</MenuItem>
-              </Select>
-            </FormControl>
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>볼륨 타입</InputLabel>
-              <Select
-                value=""
-                label="볼륨 타입"
-                onChange={(e) => {}}
-              >
-                <MenuItem value="">선택</MenuItem>
-                <MenuItem value="emptyDir">emptyDir</MenuItem>
-                <MenuItem value="hostPath">hostPath</MenuItem>
-                <MenuItem value="persistentVolumeClaim">persistentVolumeClaim</MenuItem>
-              </Select>
-            </FormControl>
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>스토리지 클래스</InputLabel>
-              <Select
-                value=""
-                label="스토리지 클래스"
-                onChange={(e) => {}}
-              >
-                <MenuItem value="">선택</MenuItem>
-                <MenuItem value="gp2">gp2</MenuItem>
-                <MenuItem value="gp3">gp3</MenuItem>
-              </Select>
-            </FormControl>
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>볼륨 크기 (GB)</InputLabel>
-              <Slider
-                value={50}
-                min={10}
-                max={100}
-                step={10}
-                onChange={(e, value) => {}}
-                valueLabelDisplay="auto"
-              />
-            </FormControl>
-            <FormControlLabel
-              control={<Switch />}
-              label="읽기 전용"
-            />
-            <FormControlLabel
-              control={<Switch />}
-              label="ConfigMap 연결"
-            />
-            <FormControlLabel
-              control={<Switch />}
-              label="Secret 연결"
-            />
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" gutterBottom color="primary">
+                📦 3단계: 볼륨 & 스토리지 설정
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                데이터 저장소와 설정 파일을 위한 볼륨을 설정합니다. 
+                업계 표준 기본값이 적용되어 있으며 필요시 수정 가능합니다.
+              </Typography>
+            </Box>
+            
+            <Alert severity="info" sx={{ mb: 3 }}>
+              <AlertTitle>💡 볼륨 설정 가이드</AlertTitle>
+              <Typography variant="body2">
+                • <strong>데이터 볼륨:</strong> 애플리케이션 데이터 저장 (50GB 권장)<br/>
+                • <strong>로그 볼륨:</strong> 로그 파일 저장 (20GB 권장)<br/>
+                • <strong>설정 볼륨:</strong> 구성 파일 저장 (1GB 충분)
+              </Typography>
+            </Alert>
+            
+            <Grid container spacing={3}>
+              {Object.entries(volumeSettings).map(([key, volume]) => (
+                <Grid item xs={12} md={4} key={key}>
+                  <Paper sx={{ p: 2, height: '100%' }}>
+                    <Typography variant="subtitle1" gutterBottom fontWeight="bold">
+                      {key === 'dataVolume' ? '📊 데이터 볼륨' :
+                       key === 'logsVolume' ? '📝 로그 볼륨' : '⚙️ 설정 볼륨'}
+                    </Typography>
+                    
+                    <TextField
+                      fullWidth
+                      label="볼륨 이름"
+                      value={volume.name}
+                      onChange={(e) => setVolumeSettings(prev => ({
+                        ...prev,
+                        [key]: { ...volume, name: e.target.value }
+                      }))}
+                      size="small"
+                      sx={{ mb: 2 }}
+                    />
+                    
+                    <TextField
+                      fullWidth
+                      label="크기"
+                      value={volume.size}
+                      onChange={(e) => setVolumeSettings(prev => ({
+                        ...prev,
+                        [key]: { ...volume, size: e.target.value }
+                      }))}
+                      size="small"
+                      sx={{ mb: 2 }}
+                      helperText="예: 50Gi, 100Gi"
+                    />
+                    
+                    <FormControl fullWidth size="small">
+                      <InputLabel>스토리지 클래스</InputLabel>
+                      <Select
+                        value={volume.storageClass}
+                        label="스토리지 클래스"
+                        onChange={(e) => setVolumeSettings(prev => ({
+                          ...prev,
+                          [key]: { ...volume, storageClass: e.target.value }
+                        }))}
+                      >
+                        <MenuItem value="gp2">gp2 (범용 SSD)</MenuItem>
+                        <MenuItem value="gp3">gp3 (최신 SSD)</MenuItem>
+                        <MenuItem value="io1">io1 (고성능 SSD)</MenuItem>
+                        <MenuItem value="sc1">sc1 (Cold HDD)</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Paper>
+                </Grid>
+              ))}
+            </Grid>
           </StepCard>
         );
 
       case 3:
         return (
           <StepCard>
-            <Typography variant="h6" gutterBottom>
-              📡 네트워크 & 보안 설정
-            </Typography>
-            {/* 네트워크 및 보안 설정 폼 */}
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>서비스 타입</InputLabel>
-              <Select
-                value=""
-                label="서비스 타입"
-                onChange={(e) => {}}
-              >
-                <MenuItem value="">선택</MenuItem>
-                <MenuItem value="ClusterIP">ClusterIP</MenuItem>
-                <MenuItem value="NodePort">NodePort</MenuItem>
-                <MenuItem value="LoadBalancer">LoadBalancer</MenuItem>
-                <MenuItem value="ExternalName">ExternalName</MenuItem>
-              </Select>
-            </FormControl>
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>외부 포트</InputLabel>
-              <TextField
-                label="외부 포트"
-                variant="outlined"
-                fullWidth
-                sx={{ mb: 2 }}
-              />
-            </FormControl>
-            <FormControlLabel
-              control={<Switch />}
-              label="Ingress 활성화"
-            />
-            <FormControlLabel
-              control={<Switch />}
-              label="TLS 사용"
-            />
-            <FormControlLabel
-              control={<Switch />}
-              label="네트워크 정책 활성화"
-            />
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" gutterBottom color="primary">
+                📡 4단계: 네트워크 & 보안 설정
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                외부 접근과 보안 정책을 설정합니다. 
+                엔터프라이즈 환경에 적합한 보안 기본값이 적용되어 있습니다.
+              </Typography>
+            </Box>
+            
+            <Alert severity="warning" sx={{ mb: 3 }}>
+              <AlertTitle>🔒 보안 권장사항</AlertTitle>
+              <Typography variant="body2">
+                • <strong>ClusterIP:</strong> 내부 통신만 허용 (권장)<br/>
+                • <strong>Ingress + TLS:</strong> HTTPS 암호화 통신<br/>
+                • <strong>Network Policy:</strong> 트래픽 제한으로 보안 강화
+              </Typography>
+            </Alert>
+            
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" gutterBottom fontWeight="bold">
+                    🌐 서비스 노출 설정
+                  </Typography>
+                  
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>서비스 타입</InputLabel>
+                    <Select
+                      value={networkSettings.serviceType}
+                      label="서비스 타입"
+                      onChange={(e) => setNetworkSettings(prev => ({
+                        ...prev,
+                        serviceType: e.target.value
+                      }))}
+                    >
+                      <MenuItem value="ClusterIP">ClusterIP (내부 전용)</MenuItem>
+                      <MenuItem value="NodePort">NodePort (노드 포트)</MenuItem>
+                      <MenuItem value="LoadBalancer">LoadBalancer (로드밸런서)</MenuItem>
+                    </Select>
+                  </FormControl>
+                  
+                  <FormControlLabel
+                    control={
+                      <Switch 
+                        checked={networkSettings.ingressEnabled}
+                        onChange={(e) => setNetworkSettings(prev => ({
+                          ...prev,
+                          ingressEnabled: e.target.checked
+                        }))}
+                      />
+                    }
+                    label="Ingress 활성화"
+                    sx={{ mb: 1 }}
+                  />
+                  
+                  <FormControlLabel
+                    control={
+                      <Switch 
+                        checked={networkSettings.tlsEnabled}
+                        onChange={(e) => setNetworkSettings(prev => ({
+                          ...prev,
+                          tlsEnabled: e.target.checked
+                        }))}
+                      />
+                    }
+                    label="TLS/HTTPS 사용"
+                  />
+                </Paper>
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" gutterBottom fontWeight="bold">
+                    🛡️ 보안 정책
+                  </Typography>
+                  
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>네트워크 정책</InputLabel>
+                    <Select
+                      value={networkSettings.networkPolicy}
+                      label="네트워크 정책"
+                      onChange={(e) => setNetworkSettings(prev => ({
+                        ...prev,
+                        networkPolicy: e.target.value
+                      }))}
+                    >
+                      <MenuItem value="open">Open (모든 트래픽 허용)</MenuItem>
+                      <MenuItem value="restricted">Restricted (제한적 허용)</MenuItem>
+                      <MenuItem value="strict">Strict (최소 권한)</MenuItem>
+                    </Select>
+                  </FormControl>
+                  
+                  <Typography variant="body2" color="text.secondary">
+                    현재 설정: <strong>{networkSettings.networkPolicy}</strong><br/>
+                    {networkSettings.networkPolicy === 'restricted' ? 
+                      '✅ 권장: 필요한 포트만 허용' :
+                      networkSettings.networkPolicy === 'strict' ?
+                      '🔒 최고 보안: 최소 권한 원칙' :
+                      '⚠️ 주의: 모든 트래픽 허용'
+                    }
+                  </Typography>
+                </Paper>
+              </Grid>
+            </Grid>
           </StepCard>
         );
 
       case 4:
         return (
           <StepCard>
-            <Typography variant="h6" gutterBottom>
-              ⚙️ 헬스체크 & 모니터링 설정
-            </Typography>
-            {/* 헬스체크 및 모니터링 설정 폼 */}
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>서비스 이름</InputLabel>
-              <Select
-                value=""
-                label="서비스 이름"
-                onChange={(e) => {}}
-              >
-                <MenuItem value="">선택</MenuItem>
-                <MenuItem value="app-service">app-service</MenuItem>
-                <MenuItem value="api-service">api-service</MenuItem>
-              </Select>
-            </FormControl>
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>헬스체크 타입</InputLabel>
-              <Select
-                value=""
-                label="헬스체크 타입"
-                onChange={(e) => {}}
-              >
-                <MenuItem value="">선택</MenuItem>
-                <MenuItem value="liveness">liveness</MenuItem>
-                <MenuItem value="readiness">readiness</MenuItem>
-                <MenuItem value="startup">startup</MenuItem>
-              </Select>
-            </FormControl>
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>초기 지연 시간 (초)</InputLabel>
-              <Slider
-                value={10}
-                min={0}
-                max={60}
-                step={5}
-                onChange={(e, value) => {}}
-                valueLabelDisplay="auto"
-              />
-            </FormControl>
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>주기 (초)</InputLabel>
-              <Slider
-                value={30}
-                min={10}
-                max={120}
-                step={10}
-                onChange={(e, value) => {}}
-                valueLabelDisplay="auto"
-              />
-            </FormControl>
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>제한 시간 (초)</InputLabel>
-              <Slider
-                value={10}
-                min={5}
-                max={30}
-                step={5}
-                onChange={(e, value) => {}}
-                valueLabelDisplay="auto"
-              />
-            </FormControl>
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>실패 임계값</InputLabel>
-              <Slider
-                value={3}
-                min={1}
-                max={5}
-                step={1}
-                onChange={(e, value) => {}}
-                valueLabelDisplay="auto"
-              />
-            </FormControl>
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>성공 임계값</InputLabel>
-              <Slider
-                value={1}
-                min={1}
-                max={3}
-                step={1}
-                onChange={(e, value) => {}}
-                valueLabelDisplay="auto"
-              />
-            </FormControl>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" gutterBottom color="primary">
+                ⚙️ 5단계: 헬스체크 & 모니터링 설정
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                서비스 상태를 모니터링하기 위한 헬스체크를 설정합니다. 
+                Kubernetes 운영 모범사례에 따른 기본값이 적용되어 있습니다.
+              </Typography>
+            </Box>
+            
+            <Alert severity="success" sx={{ mb: 3 }}>
+              <AlertTitle>💡 헬스체크 종류</AlertTitle>
+              <Typography variant="body2">
+                • <strong>Liveness:</strong> 컨테이너 재시작 여부 결정<br/>
+                • <strong>Readiness:</strong> 트래픽 수신 준비 상태 확인<br/>
+                • <strong>Startup:</strong> 초기 시작 완료 확인
+              </Typography>
+            </Alert>
+            
+            <Grid container spacing={3}>
+              {Object.entries(healthSettings).map(([probeType, probe]) => (
+                <Grid item xs={12} md={4} key={probeType}>
+                  <Paper sx={{ p: 2, height: '100%' }}>
+                    <Typography variant="subtitle1" gutterBottom fontWeight="bold">
+                      {probeType === 'livenessProbe' ? '💓 Liveness Probe' :
+                       probeType === 'readinessProbe' ? '🚦 Readiness Probe' : '🚀 Startup Probe'}
+                    </Typography>
+                    
+                    <FormControlLabel
+                      control={
+                        <Switch 
+                          checked={probe.enabled}
+                          onChange={(e) => setHealthSettings(prev => ({
+                            ...prev,
+                            [probeType]: { ...probe, enabled: e.target.checked }
+                          }))}
+                        />
+                      }
+                      label="활성화"
+                      sx={{ mb: 2 }}
+                    />
+                    
+                    {probe.enabled && (
+                      <>
+                        <TextField
+                          fullWidth
+                          label="Health Check Path"
+                          value={probe.path}
+                          onChange={(e) => setHealthSettings(prev => ({
+                            ...prev,
+                            [probeType]: { ...probe, path: e.target.value }
+                          }))}
+                          size="small"
+                          sx={{ mb: 2 }}
+                          helperText="예: /health, /ready"
+                        />
+                        
+                        <Box sx={{ mb: 2 }}>
+                          <Typography variant="caption" gutterBottom>
+                            초기 지연: {probe.initialDelay}초
+                          </Typography>
+                          <Slider
+                            value={probe.initialDelay}
+                            onChange={(_, value) => setHealthSettings(prev => ({
+                              ...prev,
+                              [probeType]: { ...probe, initialDelay: value as number }
+                            }))}
+                            min={0}
+                            max={60}
+                            step={5}
+                            size="small"
+                          />
+                        </Box>
+                        
+                        <Box>
+                          <Typography variant="caption" gutterBottom>
+                            검사 주기: {probe.period}초
+                          </Typography>
+                          <Slider
+                            value={probe.period}
+                            onChange={(_, value) => setHealthSettings(prev => ({
+                              ...prev,
+                              [probeType]: { ...probe, period: value as number }
+                            }))}
+                            min={5}
+                            max={30}
+                            step={5}
+                            size="small"
+                          />
+                        </Box>
+                      </>
+                    )}
+                  </Paper>
+                </Grid>
+              ))}
+            </Grid>
           </StepCard>
         );
 
@@ -1079,9 +1371,87 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
                   <AlertTitle>✅ 최종 준비 완료!</AlertTitle>
                   <Typography variant="body2">
                     총 {manifestPreview.manifest_count}개 파일이 성공적으로 생성되었습니다.
-                    이제 다운로드하거나 배포할 수 있습니다.
+                    이제 클라우드 제공업체를 선택하고 다운로드하거나 배포할 수 있습니다.
                   </Typography>
                 </Alert>
+                
+                {/* [advice from AI] 클라우드 제공업체 선택 UI 추가 */}
+                <Paper sx={{ p: 3, mb: 3, backgroundColor: 'grey.50' }}>
+                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                    ☁️ 클라우드 제공업체 선택
+                    <Tooltip title="각 클라우드 제공업체에 최적화된 매니페스트가 다운로드됩니다">
+                      <InfoIcon sx={{ ml: 1, fontSize: 20, color: 'text.secondary' }} />
+                    </Tooltip>
+                  </Typography>
+                  
+                  <Grid container spacing={2} sx={{ mt: 1 }}>
+                    <Grid item xs={12} sm={4}>
+                      <Button
+                        variant={selectedCloudProvider === 'iaas' ? 'contained' : 'outlined'}
+                        fullWidth
+                        onClick={() => setSelectedCloudProvider('iaas')}
+                        sx={{ py: 2 }}
+                      >
+                        <Box sx={{ textAlign: 'center' }}>
+                          <Typography variant="subtitle1" fontWeight="bold">
+                            🏢 기본 IaaS
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            범용 Kubernetes 환경
+                          </Typography>
+                        </Box>
+                      </Button>
+                    </Grid>
+                    
+                    <Grid item xs={12} sm={4}>
+                      <Button
+                        variant={selectedCloudProvider === 'aws' ? 'contained' : 'outlined'}
+                        fullWidth
+                        onClick={() => setSelectedCloudProvider('aws')}
+                        sx={{ py: 2 }}
+                        color="warning"
+                      >
+                        <Box sx={{ textAlign: 'center' }}>
+                          <Typography variant="subtitle1" fontWeight="bold">
+                            ☁️ Amazon AWS
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            EKS 최적화 설정
+                          </Typography>
+                        </Box>
+                      </Button>
+                    </Grid>
+                    
+                    <Grid item xs={12} sm={4}>
+                      <Button
+                        variant={selectedCloudProvider === 'ncp' ? 'contained' : 'outlined'}
+                        fullWidth
+                        onClick={() => setSelectedCloudProvider('ncp')}
+                        sx={{ py: 2 }}
+                        color="success"
+                      >
+                        <Box sx={{ textAlign: 'center' }}>
+                          <Typography variant="subtitle1" fontWeight="bold">
+                            🌐 Naver NCP
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            NKS 최적화 설정
+                          </Typography>
+                        </Box>
+                      </Button>
+                    </Grid>
+                  </Grid>
+                  
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    <Typography variant="body2">
+                      <strong>현재 선택:</strong> {
+                        selectedCloudProvider === 'iaas' ? '기본 IaaS 환경' :
+                        selectedCloudProvider === 'aws' ? 'Amazon Web Services (EKS)' :
+                        'Naver Cloud Platform (NKS)'
+                      }
+                    </Typography>
+                  </Alert>
+                </Paper>
                 
                 {/* 액션 버튼들 */}
                 <Box sx={{ mt: 4 }}>
@@ -1097,17 +1467,20 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
                           📥 배포 패키지 다운로드
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                          모든 파일이 포함된 ZIP 패키지를 다운로드하여 수동으로 검토하고 배포할 수 있습니다.
+                          선택된 클라우드 제공업체({
+                            selectedCloudProvider === 'iaas' ? 'IaaS' :
+                            selectedCloudProvider === 'aws' ? 'AWS' : 'NCP'
+                          })에 최적화된 ZIP 패키지를 다운로드합니다.
                         </Typography>
                         <Button
                           variant="contained"
                           color="success"
                           startIcon={<CloudDownloadIcon />}
-                          onClick={downloadPackage}
+                          onClick={() => downloadPackage(selectedCloudProvider)}
                           fullWidth
                           size="large"
                         >
-                          배포 패키지 다운로드
+                          {selectedCloudProvider.toUpperCase()} 패키지 다운로드
                         </Button>
                       </Paper>
                     </Grid>
@@ -1213,19 +1586,37 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
           {renderStepContent()}
         </Box>
 
-        {/* 네비게이션 버튼 */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
-          <Button onClick={onCancel}>
-            취소
-          </Button>
+        {/* [advice from AI] 네비게이션 버튼 - 중단 버튼 추가 */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 4 }}>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button 
+              onClick={onCancel}
+              color="secondary"
+              variant="outlined"
+            >
+              취소
+            </Button>
+            <Button 
+              onClick={onCancel}
+              color="warning"
+              variant="contained"
+              sx={{ 
+                backgroundColor: 'warning.main',
+                '&:hover': { backgroundColor: 'warning.dark' }
+              }}
+            >
+              ⏸️ 중단
+            </Button>
+          </Box>
           
           <Box>
             <Button
               disabled={activeStep === 0}
               onClick={handleBack}
               sx={{ mr: 1 }}
+              variant="outlined"
             >
-              이전
+              ⬅️ 이전
             </Button>
             {activeStep < steps.length - 1 ? (
               <Button
@@ -1233,7 +1624,7 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
                 onClick={handleNext}
                 disabled={loading}
               >
-                {loading ? '처리 중...' : '다음'}
+                {loading ? '⏳ 처리 중...' : '다음 ➡️'}
               </Button>
             ) : (
               <Button

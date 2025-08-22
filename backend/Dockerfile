@@ -61,6 +61,8 @@ FROM base as production
 
 # 애플리케이션 코드 복사
 COPY app/ ./app/
+COPY models/ ./models/
+COPY config/ ./config/
 
 # 프로덕션용 사용자 생성
 RUN groupadd -r appuser && useradd -r -g appuser appuser

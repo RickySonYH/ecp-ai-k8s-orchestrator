@@ -92,25 +92,42 @@ interface TabPanelProps {
   value: number;
 }
 
-// 스타일드 컴포넌트
+// [advice from AI] 모던 스타일드 컴포넌트 - 더 현대적인 그라디언트와 그림자 효과
 const StyledAppBar = styled(AppBar)(({ theme }) => ({
-  background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.primary.dark})`,
-  boxShadow: theme.shadows[8],
+  background: theme.palette.mode === 'dark' 
+    ? `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.primary.dark}, #1e1b4b)`
+    : `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.primary.dark}, #312e81)`,
+  boxShadow: '0 8px 32px rgba(99, 102, 241, 0.3)',
+  backdropFilter: 'blur(10px)',
 }));
 
 const StyledDrawer = styled(Drawer)(({ theme }) => ({
   '& .MuiDrawer-paper': {
     width: 280,
     background: theme.palette.mode === 'dark' 
-      ? 'linear-gradient(180deg, #1a1a1a 0%, #2d2d2d 100%)'
-      : 'linear-gradient(180deg, #f5f5f5 0%, #e0e0e0 100%)',
+      ? 'linear-gradient(180deg, #0f172a 0%, #1e293b 50%, #334155 100%)'
+      : 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%)',
+    backdropFilter: 'blur(10px)',
+    borderRight: `1px solid ${theme.palette.divider}`,
   },
 }));
 
 const SystemMetricCard = styled(Card)(({ theme }) => ({
-  background: `linear-gradient(135deg, ${theme.palette.primary.light}20, ${theme.palette.primary.main}10)`,
-  backdropFilter: 'blur(10px)',
-  border: `1px solid ${theme.palette.primary.light}40`,
+  background: theme.palette.mode === 'dark'
+    ? `linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(67, 56, 202, 0.05))`
+    : `linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(129, 140, 248, 0.03))`,
+  backdropFilter: 'blur(20px)',
+  border: `1px solid ${theme.palette.mode === 'dark' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.1)'}`,
+  boxShadow: theme.palette.mode === 'dark' 
+    ? '0 8px 32px rgba(99, 102, 241, 0.1)' 
+    : '0 4px 20px rgba(99, 102, 241, 0.08)',
+  transition: 'all 0.3s ease',
+  '&:hover': {
+    transform: 'translateY(-2px)',
+    boxShadow: theme.palette.mode === 'dark' 
+      ? '0 12px 40px rgba(99, 102, 241, 0.2)' 
+      : '0 8px 30px rgba(99, 102, 241, 0.15)',
+  },
 }));
 
 const FloatingActionButton = styled(Fab)(({ theme }) => ({
@@ -142,26 +159,41 @@ function App() {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
 
-  // 테마 생성
+  // [advice from AI] 모던 테마 생성 - 더 현대적인 색상 팔레트 적용
   const theme = createTheme({
     palette: {
       mode: darkMode ? 'dark' : 'light',
       primary: {
-        main: '#1976d2',
-        light: '#42a5f5',
-        dark: '#1565c0',
+        main: '#6366f1', // 모던 인디고
+        light: '#818cf8',
+        dark: '#4338ca',
       },
       secondary: {
-        main: '#dc004e',
-        light: '#ff5983',
-        dark: '#9a0036',
+        main: '#f59e0b', // 모던 앰버
+        light: '#fbbf24',
+        dark: '#d97706',
       },
       background: darkMode ? {
-        default: '#121212',
-        paper: '#1e1e1e',
+        default: '#0f172a', // 더 깊은 다크 블루
+        paper: '#1e293b',
       } : {
-        default: '#f5f5f5',
+        default: '#f8fafc', // 더 밝은 회색
         paper: '#ffffff',
+      },
+      success: {
+        main: '#10b981', // 모던 그린
+        light: '#34d399',
+        dark: '#059669',
+      },
+      warning: {
+        main: '#f59e0b', // 모던 오렌지
+        light: '#fbbf24',
+        dark: '#d97706',
+      },
+      error: {
+        main: '#ef4444', // 모던 레드
+        light: '#f87171',
+        dark: '#dc2626',
       },
     },
     typography: {
@@ -177,9 +209,11 @@ function App() {
     },
   });
 
-  // 탭 변경 핸들러
+  // [advice from AI] 탭 변경 핸들러 - 탭 변경 시 상단으로 스크롤
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setCurrentTab(newValue);
+    // 탭 변경 시 상단으로 스크롤 (고정 AppBar 아래로)
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // 테넌시 생성 완료 핸들러
@@ -248,8 +282,11 @@ function App() {
     }
   };
 
-  // 컴포넌트 마운트 시 초기화
+  // [advice from AI] 컴포넌트 마운트 시 초기화 및 페이지 상단 스크롤
   useEffect(() => {
+    // 페이지 로드 시 상단으로 스크롤
+    window.scrollTo(0, 0);
+    
     fetchTenantList();
     fetchSystemMetrics();
     
@@ -280,8 +317,8 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box sx={{ flexGrow: 1, minHeight: '100vh' }}>
-        {/* 메인 앱바 */}
-        <StyledAppBar position="static">
+        {/* [advice from AI] 메인 앱바 - 고정 위치로 변경하여 항상 상단에 표시 */}
+        <StyledAppBar position="fixed">
           <Toolbar>
             <IconButton
               edge="start"
@@ -443,8 +480,8 @@ function App() {
           )}
         </StyledDrawer>
 
-        {/* 메인 컨텐츠 */}
-        <Container maxWidth="xl" sx={{ mt: 2, pb: 10 }}>
+        {/* [advice from AI] 메인 컨텐츠 - 고정 AppBar를 위한 상단 여백 추가 */}
+        <Container maxWidth="xl" sx={{ mt: 10, pb: 10 }}>
           {/* 시스템 상태 오버뷰 */}
           {systemMetrics && (
             <Grid container spacing={2} sx={{ mb: 3 }}>

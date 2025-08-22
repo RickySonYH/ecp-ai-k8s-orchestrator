@@ -241,6 +241,7 @@ async def create_tenant(
             tenant_id=request.tenant_id,
             service_requirements=request.service_requirements.model_dump(),
             gpu_type=request.gpu_type,
+            cloud_provider=request.cloud_provider,  # [advice from AI] 클라우드 제공업체 로깅 추가
             auto_deploy=request.auto_deploy
         )
         
@@ -253,11 +254,12 @@ async def create_tenant(
                 detail=f"테넌시 '{request.tenant_id}'가 이미 존재합니다"
             )
         
-        # 2. 테넌시 사양 생성
+        # 2. 테넌시 사양 생성 (클라우드 제공업체 포함)
         tenant_specs = tenant_mgr.generate_tenant_specs(
             tenant_id=request.tenant_id,
             service_requirements=request.service_requirements.model_dump(),
-            gpu_type=request.gpu_type
+            gpu_type=request.gpu_type,
+            cloud_provider=request.cloud_provider  # [advice from AI] 클라우드 제공업체 전달
         )
         
         # 3. 리소스 계산
@@ -804,12 +806,20 @@ async def get_cloud_instance_mapping(
         # ECP 계산 엔진 어댑터 초기화
         calculator = ECPCalculatorAdapter()
         
-        # 클라우드 인스턴스 매핑
+        # 클라우드 인스턴스 매핑 (향상된 매핑 로직)
         result = calculator.get_cloud_instance_mapping(
             service_requirements.model_dump(),
             gpu_type,
             cloud_provider
         )
+        
+        # [advice from AI] 클라우드별 비교 데이터 추가
+        if result.get("success", False):
+            # 다른 클라우드 제공업체와 비교 데이터 생성
+            comparison_data = await _generate_cloud_comparison(
+                calculator, service_requirements.model_dump(), gpu_type
+            )
+            result["cloud_comparison"] = comparison_data
         
         logger.info("클라우드 인스턴스 매핑 완료", 
                    success=result.get("success", False),
@@ -1138,4 +1148,126 @@ async def get_monitoring_alerts() -> Dict[str, Any]:
         raise HTTPException(
             status_code=500,
             detail=f"모니터링 알림 조회 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+# ==========================================
+# 클라우드 비교 헬퍼 함수들
+# ==========================================
+
+async def _generate_cloud_comparison(
+    calculator: 'ECPCalculatorAdapter',
+    service_requirements: Dict[str, int],
+    gpu_type: str
+) -> Dict[str, Any]:
+    """
+    [advice from AI] 클라우드 제공업체별 비교 데이터 생성
+    """
+    try:
+        cloud_providers = ["aws", "ncp", "iaas"]
+        comparison_results = {}
+        
+        for provider in cloud_providers:
+            try:
+                result = calculator.get_cloud_instance_mapping(
+                    service_requirements,
+                    gpu_type,
+                    provider
+                )
+                if result.get("success", False):
+                    comparison_results[provider] = {
+                        "total_servers": result.get("total_servers", 0),
+                        "monthly_cost_usd": result.get("cost_breakdown", {}).get("total_monthly_cost_usd", 0),
+                        "monthly_cost_krw": result.get("cost_breakdown", {}).get("total_monthly_cost_krw", 0),
+                        "gpu_instances": result.get("gpu_instances", []),
+                        "cpu_instances": result.get("cpu_instances", []),
+                        "recommended": provider == "aws"  # 기본 추천은 AWS
+                    }
+                else:
+                    comparison_results[provider] = {
+                        "error": "매핑 실패",
+                        "available": False
+                    }
+            except Exception as e:
+                logger.warning(f"클라우드 비교 중 {provider} 오류", error=str(e))
+                comparison_results[provider] = {
+                    "error": str(e),
+                    "available": False
+                }
+        
+        # 비용 기준 추천 로직
+        available_providers = {k: v for k, v in comparison_results.items() 
+                             if v.get("available", True) and "error" not in v}
+        
+        if available_providers:
+            # 비용 기준 정렬 (USD 기준)
+            sorted_providers = sorted(
+                available_providers.items(),
+                key=lambda x: x[1].get("monthly_cost_usd", float('inf'))
+            )
+            
+            # 가장 저렴한 제공업체를 추천으로 설정
+            if sorted_providers:
+                cheapest_provider = sorted_providers[0][0]
+                for provider in comparison_results:
+                    comparison_results[provider]["recommended"] = (provider == cheapest_provider)
+        
+        return {
+            "providers": comparison_results,
+            "recommendation": {
+                "best_cost": min(
+                    [(k, v.get("monthly_cost_usd", float('inf'))) 
+                     for k, v in available_providers.items()],
+                    key=lambda x: x[1],
+                    default=(None, 0)
+                )[0] if available_providers else None,
+                "summary": f"{len(available_providers)}개 클라우드 제공업체 비교 완료"
+            }
+        }
+        
+    except Exception as e:
+        logger.error("클라우드 비교 데이터 생성 실패", error=str(e))
+        return {
+            "error": str(e),
+            "providers": {},
+            "recommendation": {"summary": "비교 데이터 생성 실패"}
+        }
+
+
+@router.post("/cloud-optimization-analysis")
+async def get_cloud_optimization_analysis(
+    service_requirements: ServiceRequirements,
+    gpu_type: str = "t4",
+    cloud_provider: str = "aws"
+) -> Dict[str, Any]:
+    """
+    [advice from AI] 클라우드별 최적화 분석
+    """
+    try:
+        logger.info("클라우드 최적화 분석 요청", 
+                   service_requirements=service_requirements.model_dump(),
+                   gpu_type=gpu_type,
+                   cloud_provider=cloud_provider)
+        
+        # ECP 계산 엔진 어댑터 초기화
+        calculator = ECPCalculatorAdapter()
+        
+        # 클라우드 최적화 분석
+        result = calculator.optimize_for_cloud_provider(
+            service_requirements.model_dump(),
+            gpu_type,
+            cloud_provider
+        )
+        
+        logger.info("클라우드 최적화 분석 완료", 
+                   success=result.get("success", False),
+                   optimizations_count=len(result.get("optimizations", [])))
+        
+        return result
+        
+    except Exception as e:
+        logger.error("클라우드 최적화 분석 실패", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"클라우드 최적화 분석 중 오류가 발생했습니다: {str(e)}"
         )
