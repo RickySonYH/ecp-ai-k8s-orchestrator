@@ -61,6 +61,7 @@ import { TenantCreator } from './components/TenantCreator.tsx';
 import { TenantDashboard } from './components/TenantDashboard.tsx';
 import AdvancedMonitoring from './components/AdvancedMonitoring.tsx';
 import CICDManagement from './components/CICDManagement.tsx';
+import ManifestPreviewTest from './components/ManifestPreviewTest.tsx';
 
 // 타입 정의
 interface DeploymentStatus {
@@ -420,6 +421,11 @@ function App() {
               <ListItemIcon><SettingsIcon /></ListItemIcon>
               <ListItemText primary="설정" />
             </ListItem>
+            
+            <ListItem button onClick={() => { setCurrentTab(6); setDrawerOpen(false); }}>
+              <ListItemIcon><BuildIcon /></ListItemIcon>
+              <ListItemText primary="매니페스트 테스트" />
+            </ListItem>
           </List>
           
           <Divider sx={{ my: 2 }} />
@@ -645,6 +651,10 @@ function App() {
               darkMode={darkMode}
               onDarkModeToggle={toggleDarkMode}
             />
+          </TabPanel>
+          
+          <TabPanel value={currentTab} index={6}>
+            <ManifestPreviewTest />
           </TabPanel>
         </Container>
 

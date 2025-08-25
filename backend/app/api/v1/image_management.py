@@ -23,6 +23,8 @@ from app.models.tenant_specs import (
     DeploymentStrategy, NodePlacement, PodStatus, ServiceDeploymentStatus,
     DeploymentHistory, ImageDeploymentConfig
 )
+from app.core.image_version_tracker import ImageVersionTracker, ImageVersion, ImageStatus
+from app.core.deployment_monitor import DeploymentMonitor
 
 logger = structlog.get_logger(__name__)
 
@@ -34,6 +36,10 @@ _registries: Dict[str, ImageRegistry] = {}
 _service_images: Dict[str, ServiceImage] = {}
 _deployment_status: Dict[str, ServiceDeploymentStatus] = {}
 _deployment_history: Dict[str, List[DeploymentHistory]] = {}
+
+# [advice from AI] 이미지 버전 추적 및 배포 모니터링 시스템 초기화
+_image_tracker = ImageVersionTracker()
+_deployment_monitor = None  # K8s Orchestrator와 함께 초기화
 
 # Kubernetes 클라이언트 초기화
 try:
@@ -590,3 +596,238 @@ async def _execute_rollback(service_name: str, namespace: str, revision: int) ->
     except Exception as e:
         logger.error("롤백 실행 실패", service_name=service_name, error=str(e))
         return False
+
+
+# ==========================================
+# [advice from AI] 이미지 버전 추적 및 배포 모니터링 API
+# ==========================================
+
+@router.post("/versions/register")
+async def register_image_version(
+    service_name: str,
+    image_name: str,
+    image_tag: str,
+    full_image_name: str,
+    git_commit: str,
+    git_branch: str
+):
+    """새 이미지 버전 등록 (CI/CD 파이프라인에서 호출)"""
+    try:
+        from datetime import datetime
+        
+        image_version = ImageVersion(
+            id=f"{service_name}-{image_tag}-{int(datetime.now().timestamp())}",
+            service_name=service_name,
+            image_name=image_name,
+            image_tag=image_tag,
+            full_image_name=full_image_name,
+            git_commit=git_commit,
+            git_branch=git_branch,
+            build_timestamp=datetime.now(),
+            status=ImageStatus.BUILDING
+        )
+        
+        success = _image_tracker.register_image_version(image_version)
+        
+        if success:
+            return {
+                "success": True,
+                "message": "이미지 버전 등록 완료",
+                "image_version": {
+                    "id": image_version.id,
+                    "service_name": image_version.service_name,
+                    "image_tag": image_version.image_tag,
+                    "status": image_version.status.value
+                }
+            }
+        else:
+            raise HTTPException(status_code=500, detail="이미지 버전 등록 실패")
+            
+    except Exception as e:
+        logger.error("이미지 버전 등록 실패", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"이미지 버전 등록 실패: {str(e)}"
+        )
+
+
+@router.get("/versions/{service_name}")
+async def get_image_versions(service_name: str, limit: int = 10):
+    """서비스별 이미지 버전 목록 조회"""
+    try:
+        versions = _image_tracker.get_image_versions(service_name, limit)
+        
+        return {
+            "success": True,
+            "service_name": service_name,
+            "versions": [
+                {
+                    "id": v.id,
+                    "image_tag": v.image_tag,
+                    "full_image_name": v.full_image_name,
+                    "git_commit": v.git_commit,
+                    "git_branch": v.git_branch,
+                    "build_timestamp": v.build_timestamp.isoformat(),
+                    "status": v.status.value,
+                    "vulnerabilities_count": v.vulnerabilities_count
+                }
+                for v in versions
+            ],
+            "count": len(versions)
+        }
+        
+    except Exception as e:
+        logger.error("이미지 버전 조회 실패", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"이미지 버전 조회 실패: {str(e)}"
+        )
+
+
+@router.put("/versions/{image_version_id}/status")
+async def update_image_status(
+    image_version_id: str,
+    status: ImageStatus,
+    security_scan_result: str = None,
+    vulnerabilities_count: int = 0
+):
+    """이미지 상태 업데이트"""
+    try:
+        success = _image_tracker.update_image_status(
+            image_version_id, status, security_scan_result, vulnerabilities_count
+        )
+        
+        if success:
+            return {
+                "success": True,
+                "message": "이미지 상태 업데이트 완료",
+                "image_version_id": image_version_id,
+                "new_status": status.value
+            }
+        else:
+            raise HTTPException(status_code=500, detail="이미지 상태 업데이트 실패")
+            
+    except Exception as e:
+        logger.error("이미지 상태 업데이트 실패", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"이미지 상태 업데이트 실패: {str(e)}"
+        )
+
+
+@router.get("/deployments/health")
+async def get_deployment_health():
+    """배포 상태 모니터링 헬스 체크"""
+    try:
+        if _deployment_monitor:
+            health_summary = _deployment_monitor.get_health_summary()
+            return {
+                "success": True,
+                "health_summary": health_summary,
+                "monitoring_active": _deployment_monitor.is_monitoring
+            }
+        else:
+            return {
+                "success": True,
+                "health_summary": {
+                    "total_deployments": 0,
+                    "healthy": 0,
+                    "warning": 0,
+                    "critical": 0,
+                    "version_mismatches": 0,
+                    "health_percentage": 0,
+                    "last_update": datetime.now().isoformat()
+                },
+                "monitoring_active": False,
+                "message": "배포 모니터링이 초기화되지 않았습니다"
+            }
+            
+    except Exception as e:
+        logger.error("배포 상태 조회 실패", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"배포 상태 조회 실패: {str(e)}"
+        )
+
+
+@router.get("/deployments/{tenant_id}/history")
+async def get_deployment_history(tenant_id: str, service_name: str, limit: int = 20):
+    """테넌시별 배포 히스토리 조회"""
+    try:
+        records = _image_tracker.get_deployment_history(tenant_id, service_name, limit)
+        
+        return {
+            "success": True,
+            "tenant_id": tenant_id,
+            "service_name": service_name,
+            "deployment_history": [
+                {
+                    "id": r.id,
+                    "image_version_id": r.image_version_id,
+                    "deployment_timestamp": r.deployment_timestamp.isoformat(),
+                    "status": r.status.value,
+                    "namespace": r.namespace,
+                    "replicas": r.replicas,
+                    "rollback_reason": r.rollback_reason
+                }
+                for r in records
+            ],
+            "count": len(records)
+        }
+        
+    except Exception as e:
+        logger.error("배포 히스토리 조회 실패", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"배포 히스토리 조회 실패: {str(e)}"
+        )
+
+
+@router.post("/deployments/{tenant_id}/{service_name}/rollback")
+async def rollback_deployment(tenant_id: str, service_name: str, reason: str = None):
+    """배포 롤백 실행"""
+    try:
+        # 롤백 후보 이미지 찾기
+        rollback_candidate = _image_tracker.find_rollback_candidate(tenant_id, service_name)
+        
+        if not rollback_candidate:
+            raise HTTPException(
+                status_code=404,
+                detail="롤백할 수 있는 이전 버전을 찾을 수 없습니다"
+            )
+        
+        # 롤백 기록 생성
+        from datetime import datetime
+        import time
+        
+        rollback_record = DeploymentRecord(
+            id=f"rollback-{int(time.time())}",
+            tenant_id=tenant_id,
+            service_name=service_name,
+            image_version_id=rollback_candidate.id,
+            deployment_timestamp=datetime.now(),
+            status=DeploymentStatus.ROLLED_BACK,
+            namespace=f"{tenant_id}-ecp-ai",
+            replicas=1,
+            rollback_reason=reason or "수동 롤백",
+            metadata={"manual_rollback": True, "reason": reason}
+        )
+        
+        success = _image_tracker.record_deployment(rollback_record)
+        
+        if success:
+            return {
+                "success": True,
+                "message": "롤백 기록이 생성되었습니다",
+                "rollback_image": rollback_candidate.full_image_name,
+                "rollback_record_id": rollback_record.id
+            }
+        else:
+            raise HTTPException(status_code=500, detail="롤백 기록 생성 실패")
+            
+    except Exception as e:
+        logger.error("롤백 실행 실패", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"롤백 실행 실패: {str(e)}"
+        )

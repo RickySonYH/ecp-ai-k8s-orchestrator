@@ -8,6 +8,9 @@ ECP-AI 테넌시 관리 REST API
 """
 
 import asyncio
+import time
+import os
+import subprocess
 from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Depends
 from fastapi.responses import StreamingResponse
@@ -28,6 +31,10 @@ from app.models.tenant_specs import (
     HealthCheckConfig, NetworkConfig, KubernetesAdvancedConfig
 )
 from app.core.ecp_calculator_adapter import ECPCalculatorAdapter
+from app.models.service_config import (
+    ServiceConfigurationManager, ServiceSpecificConfig, 
+    ServiceImageConfig, ServiceKubernetesConfig, BuildOptimizationLevel
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -37,6 +44,7 @@ router = APIRouter(prefix="/tenants", tags=["tenants"])
 # 전역 의존성 (실제 구현에서는 Dependency Injection 사용)
 tenant_manager = None
 k8s_orchestrator = None
+service_config_manager = None
 
 def get_tenant_manager() -> TenantManager:
     """TenantManager 의존성 주입"""
@@ -51,6 +59,14 @@ def get_k8s_orchestrator() -> K8sOrchestrator:
     if k8s_orchestrator is None:
         k8s_orchestrator = K8sOrchestrator()
     return k8s_orchestrator
+
+
+def get_service_config_manager() -> ServiceConfigurationManager:
+    """ServiceConfigurationManager 의존성 주입"""
+    global service_config_manager
+    if service_config_manager is None:
+        service_config_manager = ServiceConfigurationManager()
+    return service_config_manager
 
 
 # ==========================================
@@ -179,8 +195,220 @@ manager = ConnectionManager()
 # 백그라운드 작업 함수들
 # ==========================================
 
+async def run_cicd_pipeline_background(tenant_specs: TenantSpecs):
+    """[advice from AI] CI/CD 파이프라인 백그라운드 실행 (테넌트 생성 시 자동 실행)"""
+    try:
+        logger.info("CI/CD 파이프라인 백그라운드 실행 시작", tenant_id=tenant_specs.tenant_id)
+        
+        # 1단계: 이미지 빌드 및 푸시
+        await build_and_push_images(tenant_specs)
+        
+        # 2단계: Kubernetes 매니페스트 업데이트
+        await update_k8s_manifests(tenant_specs)
+        
+        # 3단계: 테넌트 배포
+        tenant_mgr = get_tenant_manager()
+        success = await tenant_mgr.create_tenant(tenant_specs)
+        
+        if success:
+            logger.info("CI/CD 파이프라인 완료", tenant_id=tenant_specs.tenant_id)
+        else:
+            logger.error("CI/CD 파이프라인 실패", tenant_id=tenant_specs.tenant_id)
+            
+    except Exception as e:
+        logger.error("CI/CD 파이프라인 실행 중 오류", 
+                    tenant_id=tenant_specs.tenant_id, error=str(e))
+
+
+async def prepare_images_background(tenant_specs: TenantSpecs):
+    """[advice from AI] 이미지 준비 백그라운드 작업 (수동 배포 시)"""
+    try:
+        logger.info("이미지 준비 백그라운드 작업 시작", tenant_id=tenant_specs.tenant_id)
+        
+        # 이미지 빌드 및 푸시만 실행
+        await build_and_push_images(tenant_specs)
+        
+        logger.info("이미지 준비 완료", tenant_id=tenant_specs.tenant_id)
+        
+    except Exception as e:
+        logger.error("이미지 준비 중 오류", 
+                    tenant_id=tenant_specs.tenant_id, error=str(e))
+
+
+async def build_and_push_images(tenant_specs: TenantSpecs):
+    """[advice from AI] 테넌트별 이미지 빌드 및 푸시"""
+    try:
+        logger.info("테넌트별 이미지 빌드 시작", tenant_id=tenant_specs.tenant_id)
+        
+        # 필요한 서비스 목록 추출
+        services = []
+        if tenant_specs.service_requirements.get("callbot", 0) > 0:
+            services.append("callbot")
+        if tenant_specs.service_requirements.get("chatbot", 0) > 0:
+            services.append("chatbot")
+        if tenant_specs.service_requirements.get("advisor", 0) > 0:
+            services.append("advisor")
+        
+        # 각 서비스별 이미지 빌드
+        for service in services:
+            await build_service_image(service, tenant_specs)
+        
+        logger.info("테넌트별 이미지 빌드 완료", 
+                   tenant_id=tenant_specs.tenant_id, services=services)
+        
+    except Exception as e:
+        logger.error("이미지 빌드 중 오류", 
+                    tenant_id=tenant_specs.tenant_id, error=str(e))
+
+
+async def build_service_image(service_name: str, tenant_specs: TenantSpecs):
+    """[advice from AI] 개별 서비스 이미지 빌드 (서비스별 설정 적용)"""
+    try:
+        # 서비스별 설정 로드
+        config_manager = get_service_config_manager()
+        service_config = config_manager.get_service_config(service_name)
+        
+        if not service_config:
+            logger.warning(f"{service_name} 서비스 설정을 찾을 수 없습니다. 기본 설정을 사용합니다.")
+            # 기본 설정으로 fallback
+            service_config = ServiceSpecificConfig(
+                service_name=service_name,
+                dockerfile_path="backend/Dockerfile",
+                build_context=".",
+                image_config=ServiceImageConfig(
+                    base_image="python:3.9-slim",
+                    multi_stage=True,
+                    optimization_level=BuildOptimizationLevel.PRODUCTION
+                ),
+                kubernetes_config=ServiceKubernetesConfig()
+            )
+        
+        # Git 정보 추출
+        import subprocess
+        git_commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
+        git_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
+        
+        # 이미지 태그 생성
+        timestamp = int(time.time())
+        image_tag = f"v1.0.0-{git_commit}-{timestamp}"
+        
+        # Docker 이미지 빌드 (서비스별 설정 적용)
+        docker_registry = os.getenv("DOCKER_REGISTRY", "localhost:5000")
+        image_prefix = os.getenv("IMAGE_PREFIX", "ecp-ai")
+        full_image_name = f"{docker_registry}/{image_prefix}/{service_name}:{image_tag}"
+        
+        # Docker 빌드 명령어 실행 (서비스별 Dockerfile 및 컨텍스트 사용)
+        build_cmd = [
+            "docker", "build", 
+            "-t", full_image_name,
+            "-f", service_config.dockerfile_path,
+            service_config.build_context
+        ]
+        
+        # 빌드 인자 추가
+        for key, value in service_config.image_config.build_args.items():
+            build_cmd.extend(["--build-arg", f"{key}={value}"])
+        
+        # 캐시 설정 추가
+        if service_config.image_config.cache_from:
+            for cache_image in service_config.image_config.cache_from:
+                build_cmd.extend(["--cache-from", cache_image])
+        
+        logger.info(f"{service_name} 이미지 빌드 시작", 
+                   dockerfile=service_config.dockerfile_path,
+                   context=service_config.build_context,
+                   build_args=service_config.image_config.build_args)
+        
+        result = subprocess.run(build_cmd, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            # 이미지 푸시
+            push_cmd = ["docker", "push", full_image_name]
+            push_result = subprocess.run(push_cmd, capture_output=True, text=True)
+            
+            if push_result.returncode == 0:
+                # 이미지 버전 등록
+                await register_image_version_in_tracker(service_name, image_tag, full_image_name, git_commit, git_branch)
+                logger.info(f"{service_name} 이미지 빌드 및 푸시 완료", 
+                           image_tag=image_tag,
+                           dockerfile=service_config.dockerfile_path)
+            else:
+                logger.error(f"{service_name} 이미지 푸시 실패", error=push_result.stderr)
+        else:
+            logger.error(f"{service_name} 이미지 빌드 실패", 
+                        error=result.stderr,
+                        dockerfile=service_config.dockerfile_path,
+                        context=service_config.build_context)
+            
+    except Exception as e:
+        logger.error(f"{service_name} 이미지 빌드 중 오류", error=str(e))
+
+
+async def register_image_version_in_tracker(service_name: str, image_tag: str, full_image_name: str, git_commit: str, git_branch: str):
+    """[advice from AI] 이미지 버전 추적기에 새 이미지 등록"""
+    try:
+        from app.core.image_version_tracker import ImageVersionTracker, ImageVersion, ImageStatus
+        from datetime import datetime
+        
+        # 이미지 버전 추적기 초기화
+        image_tracker = ImageVersionTracker()
+        
+        # 새 이미지 버전 생성
+        image_version = ImageVersion(
+            id=f"{service_name}-{image_tag}-{int(datetime.now().timestamp())}",
+            service_name=service_name,
+            image_name=service_name,
+            image_tag=image_tag,
+            full_image_name=full_image_name,
+            git_commit=git_commit,
+            git_branch=git_branch,
+            build_timestamp=datetime.now(),
+            status=ImageStatus.READY
+        )
+        
+        # 이미지 버전 등록
+        success = image_tracker.register_image_version(image_version)
+        
+        if success:
+            logger.info("이미지 버전 등록 완료", 
+                       service_name=service_name, image_tag=image_tag)
+        else:
+            logger.error("이미지 버전 등록 실패", 
+                        service_name=service_name, image_tag=image_tag)
+            
+    except Exception as e:
+        logger.error("이미지 버전 등록 중 오류", error=str(e))
+
+
+async def update_k8s_manifests(tenant_specs: TenantSpecs):
+    """[advice from AI] Kubernetes 매니페스트 업데이트 (새 이미지 태그 반영)"""
+    try:
+        logger.info("Kubernetes 매니페스트 업데이트 시작", tenant_id=tenant_specs.tenant_id)
+        
+        # 매니페스트 생성기 초기화
+        manifest_generator = ManifestGenerator()
+        
+        # 새로운 매니페스트 생성 (최신 이미지 태그 포함)
+        manifests = manifest_generator.generate_tenant_manifests(tenant_specs)
+        
+        # 매니페스트 파일 저장
+        for filename, content in manifests.items():
+            file_path = f"k8s-manifests/{filename}"
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            
+            with open(file_path, 'w') as f:
+                f.write(content)
+        
+        logger.info("Kubernetes 매니페스트 업데이트 완료", 
+                   tenant_id=tenant_specs.tenant_id, files=list(manifests.keys()))
+        
+    except Exception as e:
+        logger.error("매니페스트 업데이트 중 오류", 
+                    tenant_id=tenant_specs.tenant_id, error=str(e))
+
+
 async def deploy_tenant_background(tenant_specs: TenantSpecs):
-    """테넌시 배포 백그라운드 작업"""
+    """테넌시 배포 백그라운드 작업 (기존 함수 유지)"""
     try:
         logger.info("백그라운드 테넌시 배포 시작", tenant_id=tenant_specs.tenant_id)
         
@@ -194,7 +422,7 @@ async def deploy_tenant_background(tenant_specs: TenantSpecs):
             
     except Exception as e:
         logger.error("백그라운드 테넌시 배포 중 오류", 
-                    tenant_id=tenant_specs.tenant_id, error=str(e))
+                    tenant_specs.tenant_id, error=str(e))
 
 
 async def collect_metrics_background(tenant_id: str):
@@ -269,11 +497,16 @@ async def create_tenant(
             request.gpu_type
         )
         
-        # 4. 백그라운드 배포 시작
+        # 4. [advice from AI] CI/CD 파이프라인 자동 실행 (테넌트 생성 시)
         deployment_status = "manual"
         if request.auto_deploy:
-            background_tasks.add_task(deploy_tenant_background, tenant_specs)
+            # 백그라운드에서 CI/CD 파이프라인 실행
+            background_tasks.add_task(run_cicd_pipeline_background, tenant_specs)
             deployment_status = "in_progress"
+        else:
+            # 수동 배포 시에도 CI/CD 파이프라인은 실행 (이미지 준비용)
+            background_tasks.add_task(prepare_images_background, tenant_specs)
+            deployment_status = "images_preparing"
         
         # 5. 응답 생성
         response = TenantCreateResponse(
@@ -662,6 +895,205 @@ async def download_deployment_package(
         raise HTTPException(
             status_code=500,
             detail=f"배포 패키지 생성 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+@router.get("/{tenant_id}/manifest-preview")
+async def get_manifest_preview(
+    tenant_id: str,
+    service_requirements: ServiceRequirements,
+    gpu_type: str = "auto",
+    tenant_mgr: TenantManager = Depends(get_tenant_manager)
+):
+    """
+    [advice from AI] 매니페스트 미리보기 및 이미지 매칭 정보
+    - 생성될 Kubernetes 매니페스트 내용 미리보기
+    - 이미지 매칭 정보 및 설정 상세 보기
+    - 매니페스트 수정 가능 여부 확인
+    """
+    try:
+        logger.info("매니페스트 미리보기 요청", tenant_id=tenant_id)
+        
+        # 테넌시 사양 생성
+        tenant_specs = tenant_mgr.generate_tenant_specs(
+            tenant_id=tenant_id,
+            service_requirements=service_requirements.model_dump(),
+            gpu_type=gpu_type
+        )
+        
+        # 서비스별 설정 로드
+        config_manager = get_service_config_manager()
+        
+        # 매니페스트 생성기 초기화
+        manifest_generator = ManifestGenerator()
+        manifests = manifest_generator.generate_tenant_manifests(tenant_specs)
+        
+        # 이미지 매칭 정보 수집
+        image_matching_info = []
+        for filename, content in manifests.items():
+            if "deployment" in filename:
+                # 서비스 이름 추출
+                service_name = filename.split("-")[1] if len(filename.split("-")) > 1 else "unknown"
+                
+                # 서비스별 설정 로드
+                service_config = config_manager.get_service_config(service_name)
+                
+                # 이미지 정보 추출
+                import yaml
+                try:
+                    manifest_yaml = yaml.safe_load(content)
+                    containers = manifest_yaml.get('spec', {}).get('template', {}).get('spec', {}).get('containers', [])
+                    
+                    for container in containers:
+                        image_info = {
+                            "service_name": service_name,
+                            "manifest_file": filename,
+                            "container_name": container.get('name', 'unknown'),
+                            "current_image": container.get('image', 'unknown'),
+                            "ports": container.get('ports', []),
+                            "resources": container.get('resources', {}),
+                            "service_config": {
+                                "dockerfile_path": service_config.dockerfile_path if service_config else "unknown",
+                                "build_context": service_config.build_context if service_config else "unknown",
+                                "base_image": service_config.image_config.base_image if service_config else "unknown",
+                                "optimization_level": service_config.image_config.optimization_level.value if service_config else "unknown"
+                            } if service_config else None,
+                            "kubernetes_config": {
+                                "auto_scaling": service_config.kubernetes_config.auto_scaling.dict() if service_config else None,
+                                "resource_config": service_config.kubernetes_config.resource_config.dict() if service_config else None,
+                                "probe_config": service_config.kubernetes_config.probe_config.dict() if service_config else None
+                            } if service_config else None
+                        }
+                        image_matching_info.append(image_info)
+                        
+                except yaml.YAMLError as e:
+                    logger.warning(f"매니페스트 YAML 파싱 실패: {filename}", error=str(e))
+        
+        # 매니페스트 수정 가능 여부 확인
+        manifest_editability = {
+            "can_edit": True,
+            "edit_reasons": [
+                "매니페스트 파일이 로컬에 생성됨",
+                "서비스별 설정이 동적으로 적용됨",
+                "환경별 설정 오버라이드 지원"
+            ],
+            "edit_restrictions": [
+                "이미지 태그는 CI/CD 파이프라인에서 자동 업데이트됨",
+                "리소스 설정은 서비스별 설정에서 관리됨"
+            ]
+        }
+        
+        return {
+            "success": True,
+            "tenant_id": tenant_id,
+            "tenant_specs": tenant_specs.dict(),
+            "manifest_files": list(manifests.keys()),
+            "image_matching_info": image_matching_info,
+            "manifest_editability": manifest_editability,
+            "service_configs": {
+                service: config.dict() if config else None
+                for service, config in config_manager.service_configs.items()
+            },
+            "environment_configs": {
+                env: config.dict()
+                for env, config in config_manager.environment_configs.items()
+            }
+        }
+        
+    except Exception as e:
+        logger.error("매니페스트 미리보기 실패", tenant_id=tenant_id, error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"매니페스트 미리보기 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+@router.post("/{tenant_id}/update-manifest")
+async def update_manifest(
+    tenant_id: str,
+    manifest_updates: Dict[str, Any],
+    tenant_mgr: TenantManager = Depends(get_tenant_manager)
+):
+    """
+    [advice from AI] 매니페스트 수정 및 업데이트
+    - 특정 매니페스트 파일의 내용 수정
+    - 수정된 매니페스트 검증
+    - 수정 이력 추적
+    """
+    try:
+        logger.info("매니페스트 수정 요청", tenant_id=tenant_id, updates=manifest_updates)
+        
+        # 매니페스트 파일 경로 확인
+        manifest_dir = "k8s-manifests"
+        if not os.path.exists(manifest_dir):
+            raise HTTPException(
+                status_code=404,
+                detail="매니페스트 디렉토리를 찾을 수 없습니다"
+            )
+        
+        # 수정된 매니페스트 파일들 저장
+        updated_files = []
+        validation_errors = []
+        
+        for filename, content in manifest_updates.items():
+            file_path = os.path.join(manifest_dir, filename)
+            
+            # 파일 존재 여부 확인
+            if not os.path.exists(file_path):
+                validation_errors.append(f"파일을 찾을 수 없습니다: {filename}")
+                continue
+            
+            try:
+                # YAML 문법 검증
+                import yaml
+                yaml.safe_load(content)
+                
+                # 파일 백업 생성
+                backup_path = f"{file_path}.backup.{int(time.time())}"
+                with open(file_path, 'r') as f:
+                    original_content = f.read()
+                
+                with open(backup_path, 'w') as f:
+                    f.write(original_content)
+                
+                # 새 내용으로 파일 업데이트
+                with open(file_path, 'w') as f:
+                    f.write(content)
+                
+                updated_files.append({
+                    "filename": filename,
+                    "backup_path": backup_path,
+                    "status": "updated"
+                })
+                
+                logger.info(f"매니페스트 파일 수정 완료: {filename}")
+                
+            except yaml.YAMLError as e:
+                validation_errors.append(f"YAML 문법 오류 ({filename}): {str(e)}")
+            except Exception as e:
+                validation_errors.append(f"파일 수정 실패 ({filename}): {str(e)}")
+        
+        # 수정 결과 반환
+        if validation_errors:
+            return {
+                "success": False,
+                "message": "매니페스트 수정 중 오류가 발생했습니다",
+                "updated_files": updated_files,
+                "validation_errors": validation_errors
+            }
+        else:
+            return {
+                "success": True,
+                "message": "매니페스트 수정이 완료되었습니다",
+                "updated_files": updated_files,
+                "validation_errors": []
+            }
+        
+    except Exception as e:
+        logger.error("매니페스트 수정 실패", tenant_id=tenant_id, error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"매니페스트 수정 중 오류가 발생했습니다: {str(e)}"
         )
 
 

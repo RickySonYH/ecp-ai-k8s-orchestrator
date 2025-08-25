@@ -431,6 +431,22 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
     qosClass: 'Burstable'
   });
 
+  // [advice from AI] 6단계 서버별 설정 상태 추가
+  const [selectedServer, setSelectedServer] = useState<string>('callbot');
+  const [serverConfigs, setServerConfigs] = useState<Record<string, any>>({
+    callbot: { ...autoScalingSettings, ...latencySettings, ...resourceSettings },
+    chatbot: { ...autoScalingSettings, ...latencySettings, ...resourceSettings },
+    advisor: { ...autoScalingSettings, ...latencySettings, ...resourceSettings },
+    stt: { ...autoScalingSettings, ...latencySettings, ...resourceSettings },
+    tts: { ...autoScalingSettings, ...latencySettings, ...resourceSettings },
+    nlp: { ...autoScalingSettings, ...latencySettings, ...resourceSettings },
+    aicm: { ...autoScalingSettings, ...latencySettings, ...resourceSettings }
+  });
+
+  // [advice from AI] 8단계 매니페스트 수정 상태 추가
+  const [modifiedManifests, setModifiedManifests] = useState<Record<string, string>>({});
+  const [isEditing, setIsEditing] = useState<Record<string, boolean>>({});
+
   const [schedulingSettings, setSchedulingSettings] = useState<AdvancedSchedulingConfig>({
     nodeSelector: {},
     affinity: {
@@ -1256,19 +1272,114 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
           <StepCard>
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" gutterBottom color="primary">
-                ⚙️ 6단계: Kubernetes 고급 설정
+                ⚙️ 6단계: 서버별 최적화 설정
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                오토스케일링, 지연시간 최적화, 리소스 제한 등 Kubernetes 고급 설정을 조정합니다.
+                각 서비스별로 오토스케일링, 지연시간 최적화, 리소스 제한을 개별적으로 설정합니다.
               </Typography>
             </Box>
-            {/* [advice from AI] Kubernetes 고급 설정 UI 구현 */}
-            <Alert severity="info" sx={{ mb: 3 }}>
-              <AlertTitle>🚀 성능 최적화 설정</AlertTitle>
-              <Typography variant="body2">
-                이 설정들은 서비스의 성능, 안정성, 비용 효율성에 직접적인 영향을 미칩니다.
-              </Typography>
-            </Alert>
+            
+            {/* [advice from AI] 좌우 분할 레이아웃 구현 */}
+            <Grid container spacing={3}>
+              {/* 좌측: 서버 선택 및 설정 */}
+              <Grid item xs={12} md={6}>
+                <Card variant="outlined" sx={{ height: '100%' }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom color="primary">
+                      🖥️ 서버 선택 및 설정
+                    </Typography>
+                    
+                    {/* 서버 선택 */}
+                    <FormControl fullWidth sx={{ mb: 3 }}>
+                      <InputLabel>서버 선택</InputLabel>
+                      <Select
+                        value={selectedServer}
+                        onChange={(e) => setSelectedServer(e.target.value)}
+                        label="서버 선택"
+                      >
+                        {Object.keys(serverConfigs).map((server) => (
+                          <MenuItem key={server} value={server}>
+                            {server.toUpperCase()}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    
+                    {/* 선택된 서버의 현재 설정 표시 */}
+                    <Typography variant="subtitle2" gutterBottom>
+                      현재 설정: {selectedServer.toUpperCase()}
+                    </Typography>
+                    
+                    {/* 설정 변경 버튼들 */}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2 }}>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() => {
+                          // 설정 변경 로직
+                        }}
+                      >
+                        설정 변경
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        color="secondary"
+                        onClick={() => {
+                          // 설정 초기화 로직
+                        }}
+                      >
+                        기본값으로 초기화
+                      </Button>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+              
+              {/* 우측: 실시간 미리보기 */}
+              <Grid item xs={12} md={6}>
+                <Card variant="outlined" sx={{ height: '100%' }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom color="primary">
+                      👁️ 실시간 설정 미리보기
+                    </Typography>
+                    
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      {selectedServer.toUpperCase()} 서버의 현재 설정을 미리보기합니다.
+                    </Typography>
+                    
+                    {/* 설정 요약 표시 */}
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        오토스케일링: {serverConfigs[selectedServer]?.enabled ? '활성화' : '비활성화'}
+                      </Typography>
+                      <Typography variant="subtitle2" gutterBottom>
+                        최소 Pod: {serverConfigs[selectedServer]?.minReplicas || 'N/A'}
+                      </Typography>
+                      <Typography variant="subtitle2" gutterBottom>
+                        최대 Pod: {serverConfigs[selectedServer]?.maxReplicas || 'N/A'}
+                      </Typography>
+                      <Typography variant="subtitle2" gutterBottom>
+                        CPU 임계값: {serverConfigs[selectedServer]?.targetCPU || 'N/A'}%
+                      </Typography>
+                    </Box>
+                    
+                    {/* 매니페스트 적용 버튼 */}
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      fullWidth
+                      sx={{ mt: 3 }}
+                      onClick={() => {
+                        // 매니페스트에 설정 적용 로직
+                      }}
+                    >
+                      매니페스트에 설정 적용
+                    </Button>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
 
             {/* 오토스케일링 설정 */}
             <Accordion defaultExpanded sx={{ mb: 2 }}>
@@ -1757,6 +1868,7 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
                 </Alert>
                 
                 <Grid container spacing={3}>
+                  {/* 좌측: 파일 목록 (그대로 유지) */}
                   <Grid item xs={12} md={4}>
                     <Paper sx={{ p: 2, backgroundColor: 'primary.50' }}>
                       <Typography variant="subtitle1" gutterBottom fontWeight="bold">
@@ -1784,100 +1896,158 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
                     </Paper>
                   </Grid>
                   
+                  {/* 우측: 미리보기와 수정 영역을 반반으로 분할 */}
                   <Grid item xs={12} md={8}>
-                    <Paper sx={{ p: 2, backgroundColor: 'grey.50' }}>
-                      <Typography variant="subtitle1" gutterBottom fontWeight="bold">
-                        📄 매니페스트 내용 미리보기
-                        {selectedManifest && (
-                          <Chip 
-                            label={selectedManifest} 
-                            size="small" 
-                            color="primary" 
-                            sx={{ ml: 1 }}
-                          />
-                        )}
-                      </Typography>
-                      
-                      {selectedManifest ? (
-                        <Box>
-                          <ManifestViewer>
-                            {manifestPreview.manifests[selectedManifest]}
-                          </ManifestViewer>
-                          
-                          {/* 최종 수정 옵션 */}
-                          <Box sx={{ mt: 2, p: 2, backgroundColor: 'warning.50', borderRadius: 1 }}>
-                            <Typography variant="subtitle2" gutterBottom fontWeight="bold" color="warning.main">
-                              ⚠️ 최종 수정 (선택사항)
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-                              이 파일의 내용을 수정하고 싶다면 아래 텍스트를 편집할 수 있습니다.
-                              수정하지 않아도 기본값으로 진행됩니다.
-                            </Typography>
-                            
-                            <TextField
-                              multiline
-                              rows={4}
-                              fullWidth
-                              variant="outlined"
-                              value={manifestPreview.manifests[selectedManifest]}
-                              onChange={(e) => {
-                                // 매니페스트 내용 수정 로직 (실제 구현 시 상태 관리 필요)
-                                console.log('매니페스트 수정:', e.target.value);
-                              }}
-                              sx={{ 
-                                '& .MuiInputBase-root': { 
-                                  fontFamily: 'monospace',
-                                  fontSize: '0.875rem'
-                                }
-                              }}
+                    <Box sx={{ height: '500px', display: 'flex', flexDirection: 'column' }}>
+                      {/* 상단: 미리보기 영역 (정확히 절반) */}
+                      <Paper sx={{ 
+                        p: 2, 
+                        backgroundColor: 'grey.50', 
+                        height: '50%',
+                        mb: 1,
+                        display: 'flex',
+                        flexDirection: 'column'
+                      }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                          <Typography variant="subtitle1" fontWeight="bold">
+                            📄 매니페스트 내용 미리보기
+                          </Typography>
+                          {selectedManifest && (
+                            <Chip 
+                              label={selectedManifest} 
+                              size="small" 
+                              color="primary" 
+                              sx={{ ml: 1 }}
                             />
-                            
-                            <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                color="warning"
-                                onClick={() => {
-                                  // 수정 내용 저장 로직
-                                  console.log('수정 내용 저장');
-                                }}
-                              >
-                                수정 내용 저장
-                              </Button>
-                              <Button
-                                size="small"
-                                variant="text"
-                                onClick={() => {
-                                  // 원본으로 되돌리기
-                                  console.log('원본으로 되돌리기');
-                                }}
-                              >
-                                원본으로 되돌리기
-                              </Button>
-                            </Box>
-                          </Box>
+                          )}
                         </Box>
-                      ) : (
-                        <Paper sx={{ 
-                          p: 4, 
-                          textAlign: 'center', 
-                          height: '400px', 
-                          display: 'flex', 
-                          flexDirection: 'column',
-                          alignItems: 'center', 
-                          justifyContent: 'center',
-                          backgroundColor: 'grey.100'
-                        }}>
-                          <VisibilityIcon sx={{ fontSize: 48, color: 'grey.400', mb: 2 }} />
-                          <Typography color="text.secondary" variant="body1">
-                            왼쪽에서 파일을 선택하여 내용을 확인하세요
-                          </Typography>
-                          <Typography color="text.secondary" variant="caption" sx={{ mt: 1 }}>
-                            YAML 파일, 배포 스크립트, README 등을 미리보기하고 필요시 수정할 수 있습니다
-                          </Typography>
-                        </Paper>
-                      )}
-                    </Paper>
+                        
+                        {selectedManifest ? (
+                          <Box sx={{ 
+                            flex: 1, 
+                            overflow: 'auto',
+                            backgroundColor: 'white',
+                            border: '1px solid #e0e0e0',
+                            borderRadius: 1,
+                            p: 1
+                          }}>
+                            <ManifestViewer>
+                              {manifestPreview.manifests[selectedManifest]}
+                            </ManifestViewer>
+                          </Box>
+                        ) : (
+                          <Box sx={{ 
+                            flex: 1,
+                            display: 'flex', 
+                            flexDirection: 'column',
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            color: 'text.secondary',
+                            backgroundColor: 'white',
+                            border: '1px solid #e0e0e0',
+                            borderRadius: 1
+                          }}>
+                            <VisibilityIcon sx={{ fontSize: 32, color: 'grey.400', mb: 1 }} />
+                            <Typography variant="body2">
+                              왼쪽에서 파일을 선택하여 내용을 확인하세요
+                            </Typography>
+                          </Box>
+                        )}
+                      </Paper>
+                      
+                      {/* 하단: 수정 영역 (정확히 절반) */}
+                      <Paper sx={{ 
+                        p: 2, 
+                        backgroundColor: 'warning.50', 
+                        height: '50%',
+                        display: 'flex',
+                        flexDirection: 'column'
+                      }}>
+                        <Typography variant="subtitle1" gutterBottom fontWeight="bold" color="warning.main">
+                          ⚠️ 최종 수정 (선택사항)
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                          이 파일의 내용을 수정하고 싶다면 아래 텍스트를 편집할 수 있습니다.
+                          수정하지 않아도 기본값으로 진행됩니다.
+                        </Typography>
+                        
+                                                 {selectedManifest ? (
+                           <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                             <Box sx={{ flex: 1, overflow: 'hidden', mb: 1 }}>
+                               <TextField
+                                 multiline
+                                 fullWidth
+                                 variant="outlined"
+                                 value={modifiedManifests[selectedManifest] || manifestPreview.manifests[selectedManifest]}
+                                 onChange={(e) => {
+                                   setModifiedManifests(prev => ({
+                                     ...prev,
+                                     [selectedManifest]: e.target.value
+                                   }));
+                                 }}
+                                 sx={{ 
+                                   height: '100%',
+                                   '& .MuiInputBase-root': { 
+                                     fontFamily: 'monospace',
+                                     fontSize: '0.875rem',
+                                     height: '100%'
+                                   },
+                                   '& .MuiInputBase-inputMultiline': {
+                                     height: '100% !important',
+                                     overflow: 'auto'
+                                   }
+                                 }}
+                               />
+                             </Box>
+                             
+                             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                               <Button
+                                 size="small"
+                                 variant="outlined"
+                                 onClick={() => {
+                                   // 원본으로 되돌리기
+                                   setModifiedManifests(prev => {
+                                     const newState = { ...prev };
+                                     delete newState[selectedManifest];
+                                     return newState;
+                                   });
+                                 }}
+                               >
+                                 원본으로 되돌리기
+                               </Button>
+                               <Button
+                                 size="small"
+                                 variant="contained"
+                                 color="warning"
+                                 onClick={() => {
+                                   // 수정 내용 저장
+                                   console.log('수정 내용 저장:', selectedManifest);
+                                 }}
+                               >
+                                 수정 내용 저장
+                               </Button>
+                             </Box>
+                           </Box>
+                        ) : (
+                          <Box sx={{ 
+                            flex: 1,
+                            display: 'flex', 
+                            flexDirection: 'column',
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            color: 'text.secondary',
+                            backgroundColor: 'white',
+                            border: '1px solid #e0e0e0',
+                            borderRadius: 1
+                          }}>
+                            <CodeIcon sx={{ fontSize: 32, color: 'grey.400', mb: 1 }} />
+                            <Typography variant="body2">
+                              파일을 선택하여 수정할 수 있습니다
+                            </Typography>
+                          </Box>
+                        )}
+                      </Paper>
+                    </Box>
                   </Grid>
                 </Grid>
                 
@@ -1886,25 +2056,9 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
                     <AlertTitle>🚀 매니페스트 확인 및 수정 완료!</AlertTitle>
                     <Typography variant="body2">
                       생성된 매니페스트를 확인하고 필요한 수정을 완료했습니다. 
-                      다음 단계에서 다운로드하거나 배포할 수 있습니다.
+                      아래의 "다음" 버튼을 클릭하여 다음 단계로 진행하세요.
                     </Typography>
                   </Alert>
-                  
-                  <Button
-                    variant="contained"
-                    color="success"
-                    size="large"
-                    startIcon={<CheckCircleIcon />}
-                    onClick={handleNext}
-                    sx={{ 
-                      px: 6, 
-                      py: 2, 
-                      fontSize: '1.2rem',
-                      borderRadius: 3
-                    }}
-                  >
-                    ✅ 다음 단계로 (다운로드 및 배포)
-                  </Button>
                 </Box>
               </Box>
             ) : (
@@ -2154,26 +2308,19 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
           {renderStepContent()}
         </Box>
 
-        {/* [advice from AI] 네비게이션 버튼 - 중단 버튼 추가 */}
+        {/* [advice from AI] 네비게이션 버튼 - 취소 버튼 통합 */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 4 }}>
-          <Box sx={{ display: 'flex', gap: 1 }}>
+          <Box>
             <Button 
               onClick={onCancel}
               color="secondary"
               variant="outlined"
-            >
-              취소
-            </Button>
-            <Button 
-              onClick={onCancel}
-              color="warning"
-              variant="contained"
               sx={{ 
-                backgroundColor: 'warning.main',
-                '&:hover': { backgroundColor: 'warning.dark' }
+                minWidth: '120px',
+                height: '40px'
               }}
             >
-              ⏸️ 중단
+              취소
             </Button>
           </Box>
           
