@@ -90,33 +90,39 @@ class HardwareCalculatorClient:
             Dict: 계산 결과
         """
         try:
-            # 요청 데이터 준비
-            request_data = HardwareCalculationRequest(
-                callbot=service_requirements.get("callbot", 0),
-                chatbot=service_requirements.get("chatbot", 0),
-                advisor=service_requirements.get("advisor", 0),
-                standalone_stt=service_requirements.get("standalone_stt", 0),
-                standalone_tts=service_requirements.get("standalone_tts", 0),
-                ta=service_requirements.get("ta", 0),
-                qa=service_requirements.get("qa", 0),
-                gpu_type=gpu_type
-            )
+            # [advice from AI] 웹사이트와 동일한 API 요청 구조로 변경
+            # requirements 객체로 감싸서 전송
+            request_data = {
+                "requirements": {
+                    "callbot": service_requirements.get("callbot", 0),
+                    "chatbot": service_requirements.get("chatbot", 0),
+                    "advisor": service_requirements.get("advisor", 0),
+                    "stt": service_requirements.get("stt", 0),
+                    "tts": service_requirements.get("tts", 0),
+                    "ta": service_requirements.get("ta", 0),
+                    "qa": service_requirements.get("qa", 0)
+                },
+                "gpu_type": gpu_type
+            }
             
-            logger.info("하드웨어 계산 요청", 
-                       service_requirements=service_requirements, 
-                       gpu_type=gpu_type,
+            logger.info("하드웨어 계산 요청 (웹사이트 호환 구조)", 
+                       request_data=request_data,
                        api_url=self.calculate_endpoint)
             
             # 외부 API 호출
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
                     self.calculate_endpoint,
-                    json=request_data.__dict__,
+                    json=request_data,
                     headers={"Content-Type": "application/json"}
                 )
                 
                 if response.status_code == 200:
                     result = response.json()
+                    
+                    logger.info("외부 API 응답 수신", 
+                               success=result.get("success"),
+                               response_keys=list(result.keys()) if isinstance(result, dict) else "not_dict")
                     
                     if result.get("success"):
                         # 외부 API 응답을 내부 형식으로 변환
@@ -189,32 +195,43 @@ class HardwareCalculatorClient:
             Dict: 내부 형식으로 변환된 응답
         """
         try:
-            # 하드웨어 사양 추출 (server_config_table에서)
+            # 하드웨어 사양 추출 (hardware_specification에서)
             hardware_spec = external_result.get("hardware_specification", {})
-            server_configs = external_result.get("server_config_table", [])
+            aws_analysis = external_result.get("aws_cost_analysis", {})
             
-            # 서버를 GPU/CPU/인프라로 분류
+            logger.info("외부 API 응답 변환 시작", 
+                       external_keys=list(external_result.keys()),
+                       hardware_spec_keys=list(hardware_spec.keys()),
+                       aws_instances_count=len(aws_analysis.get("instance_breakdown", [])))
+            
+            # 서버를 GPU/CPU/인프라로 분류 (AWS instance_breakdown 기준)
             gpu_servers = []
             cpu_servers = []
             infrastructure_servers = []
             
-            for server in server_configs:
+            # AWS 인스턴스 정보에서 서버 정보 추출
+            for instance in aws_analysis.get("instance_breakdown", []):
+                aws_instance_info = instance.get("aws_instance", {})
+                server_role = instance.get("server_role", "Unknown Server")
+                
                 server_info = {
-                    "name": server.get("server_role", "Unknown Server"),
-                    "cpu_cores": server.get("vcpu", 0),
-                    "ram_gb": server.get("vram", 0),
-                    "gpu_type": server.get("gpu", "").upper() if server.get("gpu") else None,
-                    "gpu_ram_gb": server.get("gpu_ram_gb", 0),
-                    "gpu_quantity": server.get("gpu_quantity", 0),
-                    "storage_gb": server.get("vdisk_ebs", 0) + server.get("vdisk_instance", 0),
-                    "quantity": server.get("quantity", 1),
-                    "purpose": f"{server.get('server_role', 'Unknown')} 서버"
+                    "name": server_role,
+                    "cpu_cores": aws_instance_info.get("vcpu", 0),
+                    "ram_gb": aws_instance_info.get("memory_gb", 0),
+                    "gpu_type": aws_instance_info.get("gpu_type", "").upper() if aws_instance_info.get("gpu_type") else None,
+                    "gpu_ram_gb": 16 if aws_instance_info.get("gpu_type") else 0,  # T4 기본값
+                    "gpu_quantity": aws_instance_info.get("gpu_count", 0),
+                    "storage_gb": 500,  # 기본값
+                    "quantity": instance.get("quantity", 1),
+                    "purpose": server_role
                 }
                 
-                if server.get("gpu"):
+                # GPU가 있으면 GPU 서버로 분류
+                if aws_instance_info.get("gpu_type"):
                     gpu_servers.append(server_info)
-                elif any(keyword in server.get("server_role", "").lower() 
-                        for keyword in ["stt", "ta", "qa", "tts"]):
+                # 특정 키워드가 있으면 CPU 서버로 분류
+                elif any(keyword in server_role.lower() 
+                        for keyword in ["stt", "ta", "qa", "tts", "nginx", "database"]):
                     cpu_servers.append(server_info)
                 else:
                     infrastructure_servers.append(server_info)
@@ -252,6 +269,13 @@ class HardwareCalculatorClient:
             # 비용 분석
             aws_total_cost_krw = int(aws_analysis.get("total_monthly_cost_usd", 0) * 1300)
             ncp_total_cost_krw = int(ncp_analysis.get("total_monthly_cost_krw", 0))
+            
+            logger.info("비용 분석 변환", 
+                       aws_usd=aws_analysis.get("total_monthly_cost_usd", 0),
+                       aws_krw=aws_total_cost_krw,
+                       ncp_krw=ncp_total_cost_krw,
+                       aws_instances_count=len(aws_instances),
+                       ncp_instances_count=len(ncp_instances))
             
             return {
                 "success": True,
@@ -447,44 +471,40 @@ class HardwareCalculatorClient:
             logger.info("Server Resource Generator API 직접 호출", 
                        service_requirements=service_requirements, gpu_type=gpu_type)
             
-            # API 요청 데이터 준비
+            # [advice from AI] 웹사이트와 동일한 API 요청 구조로 변경
+            # requirements 객체로 감싸서 전송
             request_data = {
-                **service_requirements,
+                "requirements": {
+                    "callbot": service_requirements.get("callbot", 0),
+                    "chatbot": service_requirements.get("chatbot", 0),
+                    "advisor": service_requirements.get("advisor", 0),
+                    "stt": service_requirements.get("stt", 0),
+                    "tts": service_requirements.get("tts", 0),
+                    "ta": service_requirements.get("ta", 0),
+                    "qa": service_requirements.get("qa", 0)
+                },
                 "gpu_type": gpu_type
             }
+            
+            logger.info("generate_detailed_hardware_spec API 요청 (웹사이트 호환 구조)", 
+                       request_data=request_data)
             
             # Server Resource Generator API 직접 호출
             response = httpx.post(self.calculate_endpoint, json=request_data, timeout=30)
             response.raise_for_status()
             
-            modern_result = response.json()
-            logger.info("Server Resource Generator 응답 받음", 
-                       success=modern_result.get("success"),
-                       gpu_servers_count=len(modern_result.get("hardware_specification", {}).get("gpu_servers", [])),
-                       cpu_servers_count=len(modern_result.get("hardware_specification", {}).get("cpu_servers", [])),
-                       infra_servers_count=len(modern_result.get("hardware_specification", {}).get("infrastructure_servers", [])))
+            external_result = response.json()
+            logger.info("외부 API 응답 받음", 
+                       success=external_result.get("success"),
+                       response_keys=list(external_result.keys()) if isinstance(external_result, dict) else "not_dict")
             
             # 개별 서버 데이터를 그대로 반환 (변환하지 않음)
-            if modern_result.get("success"):
-                return {
-                    "success": True,
-                    "gpu_type": gpu_type,
-                    "service_requirements": service_requirements,
-                    "hardware_specification": modern_result.get("hardware_specification", {}),
-                    "aws_instances": modern_result.get("aws_instances", []),
-                    "ncp_instances": modern_result.get("ncp_instances", []),
-                    "cost_analysis": modern_result.get("cost_analysis", {}),
-                    "summary": {
-                        "message": modern_result.get("message", "하드웨어 계산 완료"),
-                        "total_servers": (
-                            len(modern_result.get("hardware_specification", {}).get("gpu_servers", [])) +
-                            len(modern_result.get("hardware_specification", {}).get("cpu_servers", [])) +
-                            len(modern_result.get("hardware_specification", {}).get("infrastructure_servers", []))
-                        )
-                    }
-                }
+            if external_result.get("success"):
+                # 외부 API 응답을 내부 형식으로 변환
+                converted_result = self._convert_external_api_response(external_result, service_requirements, gpu_type)
+                return converted_result
             else:
-                logger.error("Server Resource Generator API 호출 실패", error=modern_result)
+                logger.error("외부 API 계산 실패", error=external_result.get("error"))
                 return {"success": False, "error": "하드웨어 계산 실패"}
                 
         except Exception as e:

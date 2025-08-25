@@ -179,8 +179,11 @@ const HardwareRecommendationDisplay: React.FC<{
 
   const { hardware_specification, aws_instances, ncp_instances, cost_analysis } = hardwareData;
 
-  // 비용 포맷팅
-  const formatCurrency = (amount: number) => {
+  // 비용 포맷팅 [advice from AI] null/undefined 체크 추가로 런타임 에러 방지
+  const formatCurrency = (amount: number | undefined | null) => {
+    if (amount == null || isNaN(amount)) {
+      return '₩0';
+    }
     return `₩${amount.toLocaleString()}`;
   };
 
