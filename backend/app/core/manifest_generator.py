@@ -210,6 +210,289 @@ class ManifestGenerator:
         logger.info("배포 패키지 생성 완료", tenant_id=tenant_specs.tenant_id)
         return zip_buffer
     
+    def generate_tenant_manifests_with_advanced_config(self, tenant_specs: TenantSpecs, advanced_config, image_config=None) -> Dict[str, str]:
+        """
+        [advice from AI] 고급 설정을 포함한 테넌시 매니페스트 생성
+        """
+        manifests = {}
+        
+        try:
+            # 네임스페이스 생성
+            manifests["01-namespace.yaml"] = self._generate_namespace(tenant_specs)
+            
+            # 서비스별 매니페스트 생성 (고급 설정 및 이미지 설정 적용)
+            services = ["callbot", "chatbot", "advisor", "stt", "tts", "ta", "qa"]
+            for i, service in enumerate(services, start=2):
+                # 실제 이미지 정보 가져오기
+                service_image_info = self._get_service_image_info(service, image_config)
+                
+                # Deployment (고급 설정, 이미지 정보, 동적 리소스 적용)
+                deployment_manifest = self._generate_deployment(tenant_specs, service, advanced_config, service_image_info, None)
+                manifests[f"{i:02d}-{service}-deployment.yaml"] = deployment_manifest
+                
+                # Service
+                service_manifest = self._generate_service(tenant_specs, service)
+                manifests[f"{i:02d}-{service}-service.yaml"] = service_manifest
+                
+                # HPA (오토스케일링이 활성화된 경우만)
+                # HPA (고급 설정 적용) - 선택적 활성화
+                if advanced_config and hasattr(advanced_config, 'auto_scaling') and advanced_config.auto_scaling.enabled:
+                    hpa_manifest = self._generate_hpa(tenant_specs, service, advanced_config)
+                    manifests[f"{i:02d}-{service}-hpa.yaml"] = hpa_manifest
+                    
+                    # VPA (Vertical Pod Autoscaler) - 실험적 기능
+                    if hasattr(advanced_config.auto_scaling, 'vpa_enabled') and getattr(advanced_config.auto_scaling, 'vpa_enabled', False):
+                        vpa_manifest = self._generate_vpa(tenant_specs, service, advanced_config)
+                        manifests[f"{i:02d}-{service}-vpa.yaml"] = vpa_manifest
+            
+            # ConfigMap
+            manifests["90-configmap.yaml"] = self._generate_configmap(tenant_specs)
+            
+            # NetworkPolicy (네트워크 정책이 활성화된 경우)
+            manifests["91-networkpolicy.yaml"] = self._generate_network_policy(tenant_specs)
+            
+            # Monitoring
+            manifests["92-monitoring.yaml"] = self._generate_monitoring(tenant_specs)
+            
+            logger.info("고급 설정 매니페스트 생성 완료", 
+                       tenant_id=tenant_specs.tenant_id,
+                       manifest_count=len(manifests))
+            
+            return manifests
+            
+        except Exception as e:
+            logger.error("고급 설정 매니페스트 생성 실패", 
+                        tenant_id=tenant_specs.tenant_id, 
+                        error=str(e))
+            # 기본 매니페스트로 폴백
+            return self.generate_tenant_manifests(tenant_specs)
+    
+    def _generate_vpa(self, tenant_specs: TenantSpecs, service_name: str, advanced_config) -> str:
+        """
+        [advice from AI] VPA (Vertical Pod Autoscaler) 매니페스트 생성
+        리소스 추천 및 자동 조정을 위한 VPA 설정
+        """
+        vpa_template = """---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: {{ service_name }}-vpa
+  namespace: {{ namespace }}
+  labels:
+    app: {{ service_name }}
+    tenant: {{ tenant_id }}
+    component: vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ service_name }}
+  updatePolicy:
+    updateMode: "{{ vpa_update_mode }}"  # Off, Auto, RecommendationOnly
+  resourcePolicy:
+    containerPolicies:
+    - containerName: {{ service_name }}
+      minAllowed:
+        cpu: {{ min_cpu }}
+        memory: {{ min_memory }}
+      maxAllowed:
+        cpu: {{ max_cpu }}
+        memory: {{ max_memory }}
+      controlledResources:
+      - cpu
+      - memory
+"""
+        
+        template = Template(vpa_template)
+        
+        # VPA 설정값
+        vpa_config = getattr(advanced_config.auto_scaling, 'vpa_config', {})
+        update_mode = vpa_config.get('update_mode', 'RecommendationOnly')
+        
+        # 리소스 범위 설정
+        min_cpu = vpa_config.get('min_cpu', '100m')
+        max_cpu = vpa_config.get('max_cpu', '8000m')
+        min_memory = vpa_config.get('min_memory', '128Mi')
+        max_memory = vpa_config.get('max_memory', '16Gi')
+        
+        return template.render(
+            service_name=service_name,
+            namespace=f"{tenant_specs.tenant_id}-ecp-ai",
+            tenant_id=tenant_specs.tenant_id,
+            vpa_update_mode=update_mode,
+            min_cpu=min_cpu,
+            max_cpu=max_cpu,
+            min_memory=min_memory,
+            max_memory=max_memory
+        )
+    
+    def _get_service_image_info(self, service_name: str, image_config=None) -> Dict[str, str]:
+        """
+        [advice from AI] 서비스 이미지 정보 가져오기
+        """
+        if image_config and hasattr(image_config, 'service_images'):
+            # 이미지 설정에서 해당 서비스 이미지 찾기
+            for service_image in image_config.service_images:
+                if service_image.service_name == service_name:
+                    return {
+                        "image": f"{service_image.registry.url}/{service_image.repository}:{service_image.selected_tag}",
+                        "pull_policy": service_image.pull_policy,
+                        "registry_secret": f"{service_image.registry.name}-secret" if service_image.registry.username else None
+                    }
+        
+        # 기본 이미지 정보 반환
+        return {
+            "image": f"ecp-ai/{service_name}:latest",
+            "pull_policy": "Always",
+            "registry_secret": None
+        }
+    
+    def _calculate_service_resources(self, tenant_specs: TenantSpecs, service_name: str, resource_requirements=None) -> Dict[str, Any]:
+        """
+        [advice from AI] 채널 수 기반 동적 리소스 계산
+        실제 서비스 요구사항에 따른 CPU/Memory 자동 설정
+        """
+        try:
+            # 서비스별 기본 리소스 설정
+            service_resource_mapping = {
+                # GPU 서비스 (TTS, NLP, AICM)
+                "callbot": {"base_cpu": 1000, "base_memory": 2048, "gpu_required": True},
+                "chatbot": {"base_cpu": 500, "base_memory": 1024, "gpu_required": False}, 
+                "advisor": {"base_cpu": 800, "base_memory": 1536, "gpu_required": True},
+                "tts": {"base_cpu": 2000, "base_memory": 4096, "gpu_required": True},
+                
+                # CPU 서비스 (STT, TA, QA)
+                "stt": {"base_cpu": 4000, "base_memory": 8192, "gpu_required": False},
+                "ta": {"base_cpu": 2000, "base_memory": 4096, "gpu_required": False},
+                "qa": {"base_cpu": 1000, "base_memory": 2048, "gpu_required": False},
+                
+                # 인프라 서비스
+                "database": {"base_cpu": 2000, "base_memory": 4096, "gpu_required": False},
+                "redis": {"base_cpu": 500, "base_memory": 1024, "gpu_required": False},
+                "nginx": {"base_cpu": 200, "base_memory": 512, "gpu_required": False}
+            }
+            
+            base_config = service_resource_mapping.get(service_name, {
+                "base_cpu": 1000, "base_memory": 2048, "gpu_required": False
+            })
+            
+            # 채널 수 기반 스케일링 계산
+            total_channels = self._calculate_total_channels_from_specs(tenant_specs)
+            scaling_factor = self._calculate_scaling_factor(total_channels, service_name)
+            
+            # 동적 리소스 계산
+            calculated_cpu = int(base_config["base_cpu"] * scaling_factor)
+            calculated_memory = int(base_config["base_memory"] * scaling_factor)
+            
+            # GPU 타입별 추가 리소스 조정
+            if base_config["gpu_required"] and hasattr(tenant_specs, 'gpu_type'):
+                gpu_multiplier = self._get_gpu_resource_multiplier(tenant_specs.gpu_type)
+                calculated_cpu = int(calculated_cpu * gpu_multiplier)
+                calculated_memory = int(calculated_memory * gpu_multiplier)
+            
+            # 리소스 범위 제한 (최소/최대값 적용)
+            min_cpu, max_cpu = 100, 16000  # 100m ~ 16 cores
+            min_memory, max_memory = 128, 32768  # 128Mi ~ 32Gi
+            
+            final_cpu = max(min_cpu, min(calculated_cpu, max_cpu))
+            final_memory = max(min_memory, min(calculated_memory, max_memory))
+            
+            # K8s 리소스 형식으로 변환
+            resources = {
+                "requests": {
+                    "cpu": f"{final_cpu}m",
+                    "memory": f"{final_memory}Mi"
+                },
+                "limits": {
+                    "cpu": f"{int(final_cpu * 1.5)}m",  # requests의 1.5배
+                    "memory": f"{int(final_memory * 1.2)}Mi"  # requests의 1.2배
+                }
+            }
+            
+            # GPU 리소스 추가
+            if base_config["gpu_required"] and hasattr(tenant_specs, 'gpu_count') and tenant_specs.gpu_count > 0:
+                gpu_count = max(1, tenant_specs.gpu_count // 3)  # 서비스별 GPU 분배
+                resources["requests"]["nvidia.com/gpu"] = str(gpu_count)
+                resources["limits"]["nvidia.com/gpu"] = str(gpu_count)
+            
+            logger.info(
+                "동적 리소스 계산 완료",
+                service_name=service_name,
+                total_channels=total_channels,
+                scaling_factor=scaling_factor,
+                final_resources=resources
+            )
+            
+            return resources
+            
+        except Exception as e:
+            logger.warning(
+                "동적 리소스 계산 실패, 기본값 사용",
+                service_name=service_name,
+                error=str(e)
+            )
+            # 기본값 반환
+            return {
+                "requests": {"cpu": "500m", "memory": "1Gi"},
+                "limits": {"cpu": "1000m", "memory": "2Gi"}
+            }
+    
+    def _calculate_total_channels_from_specs(self, tenant_specs: TenantSpecs) -> int:
+        """TenantSpecs에서 총 채널 수 계산"""
+        try:
+            total_channels = 0
+            if hasattr(tenant_specs, 'services') and tenant_specs.services:
+                total_channels += tenant_specs.services.get('callbot', 0)
+                total_channels += tenant_specs.services.get('chatbot', 0)
+                total_channels += tenant_specs.services.get('advisor', 0)
+                total_channels += tenant_specs.services.get('stt', 0)
+                total_channels += tenant_specs.services.get('tts', 0)
+            return max(1, total_channels)  # 최소 1채널
+        except:
+            return 100  # 기본값
+    
+    def _calculate_scaling_factor(self, total_channels: int, service_name: str) -> float:
+        """서비스별 채널 수 기반 스케일링 팩터 계산"""
+        # 서비스별 채널당 리소스 사용률
+        service_scaling = {
+            "callbot": 0.8,   # 콜봇은 높은 리소스 사용
+            "chatbot": 0.3,   # 챗봇은 상대적으로 낮음
+            "advisor": 0.6,   # 어드바이저는 중간
+            "tts": 1.0,       # TTS는 가장 높음
+            "stt": 0.9,       # STT도 높음
+            "ta": 0.4,        # TA는 중간
+            "qa": 0.2         # QA는 낮음
+        }
+        
+        base_factor = service_scaling.get(service_name, 0.5)
+        
+        # 채널 수에 따른 계단식 스케일링
+        if total_channels <= 50:
+            return base_factor * 1.0
+        elif total_channels <= 200:
+            return base_factor * 1.5
+        elif total_channels <= 500:
+            return base_factor * 2.0
+        else:
+            return base_factor * 3.0
+    
+    def _get_gpu_resource_multiplier(self, gpu_type) -> float:
+        """GPU 타입별 리소스 배수"""
+        gpu_multipliers = {
+            "t4": 1.0,
+            "v100": 1.3,
+            "l40s": 1.6,
+            "a100": 2.0
+        }
+        
+        # Enum 처리
+        if hasattr(gpu_type, 'value'):
+            gpu_str = gpu_type.value.lower()
+        else:
+            gpu_str = str(gpu_type).lower()
+            
+        return gpu_multipliers.get(gpu_str, 1.0)
+    
     def _generate_namespace(self, tenant_specs: TenantSpecs) -> str:
         """네임스페이스 매니페스트 생성"""
         template = Template(self.builtin_templates["namespace"])
@@ -218,8 +501,8 @@ class ManifestGenerator:
             tenant_preset=tenant_specs.preset
         )
     
-    def _generate_deployment(self, tenant_specs: TenantSpecs, service_name: str) -> str:
-        """Deployment 매니페스트 생성"""
+    def _generate_deployment(self, tenant_specs: TenantSpecs, service_name: str, advanced_config=None, image_info=None, resource_requirements=None) -> str:
+        """Deployment 매니페스트 생성 (고급 설정 지원)"""
         try:
             template = Template(self.builtin_templates["deployment"])
             
@@ -234,27 +517,72 @@ class ManifestGenerator:
             
             gpu_count = 1 if has_gpu else 0
             
-            # 기본 container_specs 설정
+            # [advice from AI] 이미지 정보 적용
+            if image_info is None:
+                image_info = self._get_service_image_info(service_name)
+            
+            # [advice from AI] 채널 수 기반 동적 리소스 계산
+            dynamic_resources = self._calculate_service_resources(tenant_specs, service_name, resource_requirements)
+            
+            # 기본 container_specs 설정 (실제 이미지 정보 및 동적 리소스 적용)
             container_specs = {
-                "image": f"ecp-ai/{service_name}:latest",
+                "image": image_info["image"],
+                "imagePullPolicy": image_info["pull_policy"],
                 "ports": [{"containerPort": 8080, "protocol": "TCP"}],
                 "env": [],
-                "resources": {
-                    "requests": {"cpu": "100m", "memory": "256Mi"},
-                    "limits": {"cpu": "1000m", "memory": "1Gi"}
-                }
+                "resources": dynamic_resources
             }
             
-            return template.render(
-                tenant_id=tenant_specs.tenant_id,
-                service_name=service_name,
-                replicas=1,
-                has_gpu=has_gpu,
-                gpu_type=gpu_type,
-                gpu_count=gpu_count,
-                namespace=f"{tenant_specs.tenant_id}-ecp-ai",
-                container_specs=container_specs
-            )
+            # [advice from AI] 고급 설정 적용
+            render_params = {
+                "tenant_id": tenant_specs.tenant_id,
+                "service_name": service_name,
+                "replicas": 1,
+                "has_gpu": has_gpu,
+                "gpu_type": gpu_type,
+                "gpu_count": gpu_count,
+                "namespace": f"{tenant_specs.tenant_id}-ecp-ai",
+                "container_specs": container_specs,
+                "registry_secret": image_info.get("registry_secret")
+            }
+            
+            if advanced_config:
+                # 리소스 설정
+                if hasattr(advanced_config, 'resource_config'):
+                    resource_config = advanced_config.resource_config
+                    render_params.update({
+                        "resource_requests_cpu": resource_config.requests.cpu,
+                        "resource_requests_memory": resource_config.requests.memory,
+                        "resource_requests_ephemeral_storage": resource_config.requests.ephemeral_storage,
+                        "resource_limits_cpu": resource_config.limits.cpu,
+                        "resource_limits_memory": resource_config.limits.memory,
+                        "resource_limits_ephemeral_storage": resource_config.limits.ephemeral_storage
+                    })
+                
+                # 프로브 설정
+                if hasattr(advanced_config, 'latency_config'):
+                    latency_config = advanced_config.latency_config
+                    render_params.update({
+                        "startup_probe_enabled": latency_config.startup_probe.enabled,
+                        "startup_probe_initial_delay": latency_config.startup_probe.initial_delay_seconds,
+                        "startup_probe_period": latency_config.startup_probe.period_seconds,
+                        "startup_probe_timeout": latency_config.startup_probe.timeout_seconds,
+                        "startup_probe_failure_threshold": latency_config.startup_probe.failure_threshold,
+                        "startup_probe_success_threshold": latency_config.startup_probe.success_threshold,
+                        "liveness_probe_initial_delay": latency_config.liveness_probe.initial_delay_seconds,
+                        "liveness_probe_period": latency_config.liveness_probe.period_seconds,
+                        "liveness_probe_timeout": latency_config.liveness_probe.timeout_seconds,
+                        "liveness_probe_failure_threshold": latency_config.liveness_probe.failure_threshold,
+                        "readiness_probe_initial_delay": latency_config.readiness_probe.initial_delay_seconds,
+                        "readiness_probe_period": latency_config.readiness_probe.period_seconds,
+                        "readiness_probe_timeout": latency_config.readiness_probe.timeout_seconds,
+                        "readiness_probe_failure_threshold": latency_config.readiness_probe.failure_threshold,
+                        "readiness_probe_success_threshold": latency_config.readiness_probe.success_threshold,
+                        "rolling_update_max_surge": latency_config.rolling_update_max_surge,
+                        "rolling_update_max_unavailable": latency_config.rolling_update_max_unavailable
+                    })
+            
+            return template.render(**render_params)
         except Exception as e:
             logger.error("Deployment 매니페스트 생성 실패", 
                         service_name=service_name, error=str(e))
@@ -768,23 +1096,51 @@ spec:
   type: ClusterIP
 """
     
-    def _generate_hpa(self, tenant_specs: TenantSpecs, service_name: str) -> str:
-        """HPA 매니페스트 생성"""
+    def _generate_hpa(self, tenant_specs: TenantSpecs, service_name: str, advanced_config=None) -> str:
+        """HPA 매니페스트 생성 (고급 설정 지원)"""
         template = Template(self.builtin_templates["hpa"])
         
         # 기본 스케일링 설정
-        min_replicas = 1
-        max_replicas = 10
-        target_cpu = 70
+        render_params = {
+            "tenant_id": tenant_specs.tenant_id,
+            "service_name": service_name,
+            "min_replicas": 1,
+            "max_replicas": 10,
+            "target_cpu": 70,
+            "target_memory": 80,
+            "namespace": f"{tenant_specs.tenant_id}-ecp-ai",
+            "custom_metrics_enabled": False,
+            "custom_metric_name": "",
+            "custom_target_value": 100,
+            "scale_up_stabilization_window": 60,
+            "scale_up_max_percent": 100,
+            "scale_up_period_seconds": 60,
+            "scale_down_stabilization_window": 300,
+            "scale_down_max_percent": 10,
+            "scale_down_period_seconds": 60
+        }
         
-        return template.render(
-            tenant_id=tenant_specs.tenant_id,
-            service_name=service_name,
-            min_replicas=min_replicas,
-            max_replicas=max_replicas,
-            target_cpu=target_cpu,
-            namespace=f"{tenant_specs.tenant_id}-ecp-ai"
-        )
+        # [advice from AI] 고급 설정 적용
+        if advanced_config and hasattr(advanced_config, 'auto_scaling'):
+            auto_scaling = advanced_config.auto_scaling
+            if auto_scaling.enabled:
+                render_params.update({
+                    "min_replicas": auto_scaling.min_replicas,
+                    "max_replicas": auto_scaling.max_replicas,
+                    "target_cpu": auto_scaling.target_cpu,
+                    "target_memory": auto_scaling.target_memory,
+                    "custom_metrics_enabled": auto_scaling.custom_metrics_enabled,
+                    "custom_metric_name": auto_scaling.custom_metric_name or "",
+                    "custom_target_value": auto_scaling.custom_target_value or 100,
+                    "scale_up_stabilization_window": auto_scaling.scale_up_stabilization_window,
+                    "scale_up_max_percent": auto_scaling.scale_up_max_percent,
+                    "scale_up_period_seconds": auto_scaling.scale_up_period_seconds,
+                    "scale_down_stabilization_window": auto_scaling.scale_down_stabilization_window,
+                    "scale_down_max_percent": auto_scaling.scale_down_max_percent,
+                    "scale_down_period_seconds": auto_scaling.scale_down_period_seconds
+                })
+        
+        return template.render(**render_params)
     
     def _generate_configmap(self, tenant_specs: TenantSpecs) -> str:
         """ConfigMap 매니페스트 생성"""
@@ -1089,6 +1445,11 @@ metadata:
     ecp.ai/service: {{ service_name }}
 spec:
   replicas: {{ replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ rolling_update_max_surge | default('25%') }}
+      maxUnavailable: {{ rolling_update_max_unavailable | default('25%') }}
   selector:
     matchLabels:
       app: {{ service_name }}
@@ -1102,6 +1463,10 @@ spec:
         ecp.ai/service: {{ service_name }}
         monitoring: enabled
     spec:
+      {% if registry_secret %}
+      imagePullSecrets:
+      - name: {{ registry_secret }}
+      {% endif %}
       {% if has_gpu %}
       nodeSelector:
         accelerator: nvidia-{{ gpu_type }}
@@ -1137,26 +1502,48 @@ spec:
             {% if has_gpu %}
             nvidia.com/gpu: {{ gpu_count }}
             {% endif %}
-            cpu: {{ container_specs.get('resources', {}).get('requests', {}).get('cpu', '100m') }}
-            memory: {{ container_specs.get('resources', {}).get('requests', {}).get('memory', '256Mi') }}
+            cpu: {{ resource_requests_cpu | default('100m') }}
+            memory: {{ resource_requests_memory | default('256Mi') }}
+            {% if resource_requests_ephemeral_storage %}
+            ephemeral-storage: {{ resource_requests_ephemeral_storage }}
+            {% endif %}
           limits:
             {% if has_gpu %}
             nvidia.com/gpu: {{ gpu_count }}
             {% endif %}
-            cpu: {{ container_specs.get('resources', {}).get('limits', {}).get('cpu', '1000m') }}
-            memory: {{ container_specs.get('resources', {}).get('limits', {}).get('memory', '1Gi') }}
+            cpu: {{ resource_limits_cpu | default('1000m') }}
+            memory: {{ resource_limits_memory | default('1Gi') }}
+            {% if resource_limits_ephemeral_storage %}
+            ephemeral-storage: {{ resource_limits_ephemeral_storage }}
+            {% endif %}
+        {% if startup_probe_enabled %}
+        startupProbe:
+          httpGet:
+            path: /startup
+            port: {{ container_specs.ports[0].containerPort }}
+          initialDelaySeconds: {{ startup_probe_initial_delay }}
+          periodSeconds: {{ startup_probe_period }}
+          timeoutSeconds: {{ startup_probe_timeout }}
+          failureThreshold: {{ startup_probe_failure_threshold }}
+          successThreshold: {{ startup_probe_success_threshold }}
+        {% endif %}
         livenessProbe:
           httpGet:
             path: /health
             port: {{ container_specs.ports[0].containerPort }}
-          initialDelaySeconds: 30
-          periodSeconds: 10
+          initialDelaySeconds: {{ liveness_probe_initial_delay | default(30) }}
+          periodSeconds: {{ liveness_probe_period | default(10) }}
+          timeoutSeconds: {{ liveness_probe_timeout | default(5) }}
+          failureThreshold: {{ liveness_probe_failure_threshold | default(3) }}
         readinessProbe:
           httpGet:
             path: /ready
             port: {{ container_specs.ports[0].containerPort }}
-          initialDelaySeconds: 5
-          periodSeconds: 5
+          initialDelaySeconds: {{ readiness_probe_initial_delay | default(5) }}
+          periodSeconds: {{ readiness_probe_period | default(5) }}
+          timeoutSeconds: {{ readiness_probe_timeout | default(3) }}
+          failureThreshold: {{ readiness_probe_failure_threshold | default(3) }}
+          successThreshold: {{ readiness_probe_success_threshold | default(1) }}
 """
 
     def _get_service_template(self) -> str:
@@ -1215,20 +1602,29 @@ spec:
       name: memory
       target:
         type: Utilization
-        averageUtilization: 80
+        averageUtilization: {{ target_memory }}
+  {% if custom_metrics_enabled %}
+  - type: Pods
+    pods:
+      metric:
+        name: {{ custom_metric_name }}
+      target:
+        type: AverageValue
+        averageValue: {{ custom_target_value }}
+  {% endif %}
   behavior:
     scaleUp:
-      stabilizationWindowSeconds: 60
+      stabilizationWindowSeconds: {{ scale_up_stabilization_window }}
       policies:
       - type: Percent
-        value: 100
-        periodSeconds: 60
+        value: {{ scale_up_max_percent }}
+        periodSeconds: {{ scale_up_period_seconds }}
     scaleDown:
-      stabilizationWindowSeconds: 300
+      stabilizationWindowSeconds: {{ scale_down_stabilization_window }}
       policies:
       - type: Percent
-        value: 10
-        periodSeconds: 60
+        value: {{ scale_down_max_percent }}
+        periodSeconds: {{ scale_down_period_seconds }}
 """
 
     def _get_configmap_template(self) -> str:

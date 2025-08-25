@@ -393,13 +393,17 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   
-  // 기존 계산 엔진 API 호출
+  // [advice from AI] 기존 계산 엔진 API 호출 (타임아웃 및 에러 핸들링 개선)
   React.useEffect(() => {
     const fetchDetailedSpec = async () => {
       setLoading(true);
       setError(null);
       
       try {
+        // 5초 타임아웃 설정
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
         const response = await fetch(`/api/v1/tenants/calculate-detailed-hardware`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -408,24 +412,34 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
             gpu_type: gpuType,
             include_cloud_mapping: true
           }),
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
 
         if (response.ok) {
           const data = await response.json();
           setDetailedSpec(data);
+          console.log("✅ 하드웨어 계산 API 성공:", data);
         } else {
-          // 폴백: 클라이언트 계산 사용
+          console.warn("⚠️ API 응답 실패, 클라이언트 계산 사용:", response.status);
           setDetailedSpec(null);
         }
       } catch (err) {
-        // 폴백: 클라이언트 계산 사용
+        console.warn("⚠️ API 호출 실패, 클라이언트 계산 사용:", err);
         setDetailedSpec(null);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDetailedSpec();
+    // 서비스 요구사항이 유효한 경우만 API 호출
+    const hasValidRequirements = Object.values(serviceRequirements).some(val => val > 0);
+    if (hasValidRequirements) {
+      fetchDetailedSpec();
+    } else {
+      setLoading(false);
+    }
   }, [serviceRequirements, gpuType]);
   
   // 하드웨어 스펙 계산 (폴백용 - 기존 로직 유지)
@@ -807,12 +821,22 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
     return '서버 역할 및 처리 용량 정보';
   };
 
-  // 로딩 상태 처리
+  // [advice from AI] 개선된 로딩 상태 처리
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" py={4}>
-        <CircularProgress />
-        <Typography sx={{ ml: 2 }}>정교한 하드웨어 계산 중...</Typography>
+      <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" py={4}>
+        <CircularProgress size={40} />
+        <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
+          🚀 정교한 하드웨어 계산 중...
+        </Typography>
+        <Typography variant="body2" color="text.secondary" textAlign="center">
+          채널 수와 GPU 타입을 기반으로<br/>
+          최적화된 서버 구성을 계산하고 있습니다
+        </Typography>
+        <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+          <Chip size="small" label="5초 타임아웃" color="info" variant="outlined" />
+          <Chip size="small" label="자동 폴백" color="success" variant="outlined" />
+        </Box>
       </Box>
     );
   }

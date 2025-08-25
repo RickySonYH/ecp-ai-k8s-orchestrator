@@ -51,7 +51,8 @@ import {
   Refresh as RefreshIcon,
   CloudQueue as CloudIcon,
   Memory as MemoryIcon,
-  Speed as SpeedIcon
+  Speed as SpeedIcon,
+  Build as BuildIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
@@ -59,6 +60,7 @@ import { styled } from '@mui/material/styles';
 import { TenantCreator } from './components/TenantCreator.tsx';
 import { TenantDashboard } from './components/TenantDashboard.tsx';
 import AdvancedMonitoring from './components/AdvancedMonitoring.tsx';
+import CICDManagement from './components/CICDManagement.tsx';
 
 // 타입 정의
 interface DeploymentStatus {
@@ -410,6 +412,11 @@ function App() {
             </ListItem>
             
             <ListItem button onClick={() => { setCurrentTab(4); setDrawerOpen(false); }}>
+              <ListItemIcon><BuildIcon /></ListItemIcon>
+              <ListItemText primary="CI/CD 관리" />
+            </ListItem>
+            
+            <ListItem button onClick={() => { setCurrentTab(5); setDrawerOpen(false); }}>
               <ListItemIcon><SettingsIcon /></ListItemIcon>
               <ListItemText primary="설정" />
             </ListItem>
@@ -581,6 +588,11 @@ function App() {
                 iconPosition="start"
               />
               <Tab 
+                label="🔧 CI/CD 관리" 
+                icon={<BuildIcon />}
+                iconPosition="start"
+              />
+              <Tab 
                 label="⚙️ 설정" 
                 icon={<SettingsIcon />}
                 iconPosition="start"
@@ -625,6 +637,10 @@ function App() {
           </TabPanel>
 
           <TabPanel value={currentTab} index={4}>
+            <CICDManagement />
+          </TabPanel>
+
+          <TabPanel value={currentTab} index={5}>
             <SettingsView 
               darkMode={darkMode}
               onDarkModeToggle={toggleDarkMode}

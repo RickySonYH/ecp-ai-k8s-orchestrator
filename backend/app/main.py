@@ -20,6 +20,8 @@ import structlog
 
 # ECP-AI 핵심 모듈 임포트
 from app.api.v1.tenants import router as tenants_router
+from app.api.v1.images import router as images_router
+from app.api.v1.image_management import router as image_management_router
 # from app.core.tenant_manager import TenantManager
 # from app.core.resource_calculator import ResourceCalculator  
 # from app.core.k8s_orchestrator import K8sOrchestrator
@@ -115,6 +117,8 @@ app.add_middleware(
 
 # API 라우터 등록
 app.include_router(tenants_router, prefix="/api/v1")
+app.include_router(images_router, prefix="/api/v1")
+app.include_router(image_management_router, prefix="/api/v1")
 
 
 # 헬스 체크 엔드포인트

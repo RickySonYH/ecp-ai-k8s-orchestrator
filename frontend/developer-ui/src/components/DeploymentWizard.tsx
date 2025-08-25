@@ -109,6 +109,101 @@ interface AdvancedConfig {
   network_config: NetworkConfig;
 }
 
+// [advice from AI] Kubernetes 고급 설정 타입 추가
+interface AutoScalingConfig {
+  enabled: boolean;
+  minReplicas: number;
+  maxReplicas: number;
+  targetCPU: number;
+  targetMemory: number;
+  scaleUpPolicy: {
+    stabilizationWindow: number;
+    maxPercent: number;
+    periodSeconds: number;
+  };
+  scaleDownPolicy: {
+    stabilizationWindow: number;
+    maxPercent: number;
+    periodSeconds: number;
+  };
+  customMetrics: {
+    enabled: boolean;
+    metricName: string;
+    targetValue: number;
+  };
+}
+
+interface LatencyConfig {
+  startupProbe: {
+    enabled: boolean;
+    initialDelaySeconds: number;
+    periodSeconds: number;
+    timeoutSeconds: number;
+    failureThreshold: number;
+    successThreshold: number;
+  };
+  livenessProbe: {
+    initialDelaySeconds: number;
+    periodSeconds: number;
+    timeoutSeconds: number;
+    failureThreshold: number;
+  };
+  readinessProbe: {
+    initialDelaySeconds: number;
+    periodSeconds: number;
+    timeoutSeconds: number;
+    failureThreshold: number;
+    successThreshold: number;
+  };
+  rollingUpdate: {
+    maxSurge: string;
+    maxUnavailable: string;
+  };
+}
+
+interface ResourceConfig {
+  requests: {
+    cpu: string;
+    memory: string;
+    ephemeralStorage?: string;
+  };
+  limits: {
+    cpu: string;
+    memory: string;
+    ephemeralStorage?: string;
+  };
+  qosClass: 'Guaranteed' | 'Burstable' | 'BestEffort';
+}
+
+interface AdvancedSchedulingConfig {
+  nodeSelector: Record<string, string>;
+  affinity: {
+    nodeAffinity: {
+      enabled: boolean;
+      requiredDuringScheduling: boolean;
+      matchLabels: Record<string, string>;
+    };
+    podAffinity: {
+      enabled: boolean;
+      preferredDuringScheduling: boolean;
+      topologyKey: string;
+    };
+    podAntiAffinity: {
+      enabled: boolean;
+      requiredDuringScheduling: boolean;
+      topologyKey: string;
+    };
+  };
+  tolerations: Array<{
+    key: string;
+    operator: 'Equal' | 'Exists';
+    value?: string;
+    effect: 'NoSchedule' | 'PreferNoSchedule' | 'NoExecute';
+    tolerationSeconds?: number;
+  }>;
+  priorityClassName?: string;
+}
+
 interface EnvironmentVariable {
   name: string;
   value: string;
@@ -194,6 +289,7 @@ const steps = [
   '볼륨 & 스토리지 설정',
   '네트워크 & 보안 설정',
   '헬스체크 & 모니터링 설정',
+  'Kubernetes 고급 설정',
   '매니페스트 생성 준비',
   '매니페스트 생성 및 확인',
   '다운로드 및 배포'
@@ -205,6 +301,7 @@ const stepDescriptions = [
   '데이터 저장소와 설정 파일을 위한 볼륨을 설정합니다',
   '외부 접근과 보안 정책을 설정합니다',
   '서비스 상태를 모니터링하기 위한 헬스체크를 설정합니다',
+  '오토스케일링, 지연시간 최적화, 리소스 제한 등 고급 Kubernetes 설정을 조정합니다',
   '모든 설정을 검증하고 매니페스트 생성을 준비합니다',
   'Kubernetes 매니페스트를 생성하고 내용을 확인합니다',
   '생성된 파일을 다운로드하거나 클러스터에 배포합니다'
@@ -268,6 +365,95 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
   // [advice from AI] 하드웨어 계산 결과 상태 추가
   const [hardwareSpec, setHardwareSpec] = useState<any>(null);
 
+  // [advice from AI] Kubernetes 고급 설정 상태 추가
+  const [autoScalingSettings, setAutoScalingSettings] = useState<AutoScalingConfig>({
+    enabled: true,
+    minReplicas: 2,
+    maxReplicas: 10,
+    targetCPU: 70,
+    targetMemory: 80,
+    scaleUpPolicy: {
+      stabilizationWindow: 60,
+      maxPercent: 100,
+      periodSeconds: 60
+    },
+    scaleDownPolicy: {
+      stabilizationWindow: 300,
+      maxPercent: 10,
+      periodSeconds: 60
+    },
+    customMetrics: {
+      enabled: false,
+      metricName: 'requests_per_second',
+      targetValue: 100
+    }
+  });
+
+  const [latencySettings, setLatencySettings] = useState<LatencyConfig>({
+    startupProbe: {
+      enabled: false,
+      initialDelaySeconds: 30,
+      periodSeconds: 10,
+      timeoutSeconds: 5,
+      failureThreshold: 3,
+      successThreshold: 1
+    },
+    livenessProbe: {
+      initialDelaySeconds: 30,
+      periodSeconds: 10,
+      timeoutSeconds: 5,
+      failureThreshold: 3
+    },
+    readinessProbe: {
+      initialDelaySeconds: 5,
+      periodSeconds: 5,
+      timeoutSeconds: 3,
+      failureThreshold: 3,
+      successThreshold: 1
+    },
+    rollingUpdate: {
+      maxSurge: '25%',
+      maxUnavailable: '25%'
+    }
+  });
+
+  const [resourceSettings, setResourceSettings] = useState<ResourceConfig>({
+    requests: {
+      cpu: '100m',
+      memory: '256Mi',
+      ephemeralStorage: '1Gi'
+    },
+    limits: {
+      cpu: '1000m',
+      memory: '1Gi',
+      ephemeralStorage: '2Gi'
+    },
+    qosClass: 'Burstable'
+  });
+
+  const [schedulingSettings, setSchedulingSettings] = useState<AdvancedSchedulingConfig>({
+    nodeSelector: {},
+    affinity: {
+      nodeAffinity: {
+        enabled: false,
+        requiredDuringScheduling: false,
+        matchLabels: {}
+      },
+      podAffinity: {
+        enabled: false,
+        preferredDuringScheduling: true,
+        topologyKey: 'kubernetes.io/hostname'
+      },
+      podAntiAffinity: {
+        enabled: true,
+        requiredDuringScheduling: false,
+        topologyKey: 'kubernetes.io/hostname'
+      }
+    },
+    tolerations: [],
+    priorityClassName: undefined
+  });
+
   // [advice from AI] 하드웨어 사양 가져오기
   useEffect(() => {
     const fetchHardwareSpec = async () => {
@@ -294,18 +480,31 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
     fetchHardwareSpec();
   }, [serviceRequirements, gpuType]);
 
-  // 다음 단계로 이동
+  // [advice from AI] 다음 단계로 이동 (로딩 상태 안전 관리)
   const handleNext = async () => {
-    if (activeStep === 1) {
-      await generateManifests();
-    } else if (activeStep === 2) {
-      await validateDeployment();
-    } else if (activeStep === 5) {
-      // 6단계에서 7단계로 이동할 때 매니페스트 자동 생성
-      await generateManifests();
-    }
+    setError(null);
     
-    setActiveStep((prevActiveStep) => prevActiveStep + 1);
+    try {
+      if (activeStep === 1) {
+        setLoading(true);
+        await generateManifests();
+      } else if (activeStep === 2) {
+        setLoading(true);
+        await validateDeployment();
+      } else if (activeStep === 6) {
+        // 7단계에서 8단계로 이동할 때 매니페스트 자동 생성
+        setLoading(true);
+        await generateManifests();
+      }
+      
+      setActiveStep((prevActiveStep) => prevActiveStep + 1);
+    } catch (error) {
+      console.error("단계 이동 중 오류:", error);
+      setError("단계 이동 중 오류가 발생했습니다. 다시 시도해주세요.");
+    } finally {
+      // 로딩 상태 항상 해제
+      setLoading(false);
+    }
   };
 
   // 이전 단계로 이동
@@ -313,24 +512,35 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
     setActiveStep((prevActiveStep) => prevActiveStep - 1);
   };
 
-  // [advice from AI] 매니페스트 생성 - 모든 클라우드 제공업체용 매니페스트 생성
+  // [advice from AI] 매니페스트 생성 - 모든 클라우드 제공업체용 매니페스트 생성 (타임아웃 추가)
   const generateManifests = async () => {
-    setLoading(true);
-    setError(null);
-    
     try {
       // 모든 클라우드 제공업체용 매니페스트를 병렬로 생성
       const cloudProviders = ['iaas', 'aws', 'ncp'];
       const manifestPromises = cloudProviders.map(async (provider) => {
+        // 10초 타임아웃 설정
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
         const response = await fetch(`/api/v1/tenants/${tenantId}/generate-manifests`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...serviceRequirements,
             gpu_type: gpuType,
-            cloud_provider: provider
+            cloud_provider: provider,
+            // [advice from AI] Kubernetes 고급 설정 포함
+            kubernetes_advanced_config: {
+              auto_scaling: autoScalingSettings,
+              latency_config: latencySettings,
+              resource_config: resourceSettings,
+              scheduling_config: schedulingSettings
+            }
           }),
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           console.warn(`${provider} 매니페스트 생성 실패`);
@@ -1046,7 +1256,358 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
           <StepCard>
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" gutterBottom color="primary">
-                📋 6단계: 매니페스트 생성 준비
+                ⚙️ 6단계: Kubernetes 고급 설정
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                오토스케일링, 지연시간 최적화, 리소스 제한 등 Kubernetes 고급 설정을 조정합니다.
+              </Typography>
+            </Box>
+            {/* [advice from AI] Kubernetes 고급 설정 UI 구현 */}
+            <Alert severity="info" sx={{ mb: 3 }}>
+              <AlertTitle>🚀 성능 최적화 설정</AlertTitle>
+              <Typography variant="body2">
+                이 설정들은 서비스의 성능, 안정성, 비용 효율성에 직접적인 영향을 미칩니다.
+              </Typography>
+            </Alert>
+
+            {/* 오토스케일링 설정 */}
+            <Accordion defaultExpanded sx={{ mb: 2 }}>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  🔄 HPA (Horizontal Pod Autoscaler) 설정
+                </Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={3}>
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={autoScalingSettings.enabled}
+                          onChange={(e) => setAutoScalingSettings(prev => ({
+                            ...prev,
+                            enabled: e.target.checked
+                          }))}
+                        />
+                      }
+                      label="오토스케일링 활성화"
+                    />
+                  </Grid>
+                  
+                  {autoScalingSettings.enabled && (
+                    <>
+                      <Grid item xs={12} md={6}>
+                        <TextField
+                          fullWidth
+                          label="최소 Pod 수"
+                          type="number"
+                          value={autoScalingSettings.minReplicas}
+                          onChange={(e) => setAutoScalingSettings(prev => ({
+                            ...prev,
+                            minReplicas: parseInt(e.target.value)
+                          }))}
+                          InputProps={{ inputProps: { min: 1, max: 100 } }}
+                          helperText="서비스가 유지할 최소 Pod 수"
+                        />
+                      </Grid>
+                      
+                      <Grid item xs={12} md={6}>
+                        <TextField
+                          fullWidth
+                          label="최대 Pod 수"
+                          type="number"
+                          value={autoScalingSettings.maxReplicas}
+                          onChange={(e) => setAutoScalingSettings(prev => ({
+                            ...prev,
+                            maxReplicas: parseInt(e.target.value)
+                          }))}
+                          InputProps={{ inputProps: { min: 1, max: 1000 } }}
+                          helperText="확장 가능한 최대 Pod 수"
+                        />
+                      </Grid>
+                      
+                      <Grid item xs={12} md={6}>
+                        <Typography gutterBottom>CPU 사용률 임계값: {autoScalingSettings.targetCPU}%</Typography>
+                        <Slider
+                          value={autoScalingSettings.targetCPU}
+                          onChange={(_, value) => setAutoScalingSettings(prev => ({
+                            ...prev,
+                            targetCPU: value as number
+                          }))}
+                          min={10}
+                          max={95}
+                          step={5}
+                          marks={[
+                            { value: 50, label: '50%' },
+                            { value: 70, label: '70%' },
+                            { value: 90, label: '90%' }
+                          ]}
+                          valueLabelDisplay="auto"
+                        />
+                      </Grid>
+                      
+                      <Grid item xs={12} md={6}>
+                        <Typography gutterBottom>메모리 사용률 임계값: {autoScalingSettings.targetMemory}%</Typography>
+                        <Slider
+                          value={autoScalingSettings.targetMemory}
+                          onChange={(_, value) => setAutoScalingSettings(prev => ({
+                            ...prev,
+                            targetMemory: value as number
+                          }))}
+                          min={10}
+                          max={95}
+                          step={5}
+                          marks={[
+                            { value: 60, label: '60%' },
+                            { value: 80, label: '80%' },
+                            { value: 90, label: '90%' }
+                          ]}
+                          valueLabelDisplay="auto"
+                        />
+                      </Grid>
+                    </>
+                  )}
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+            
+            {/* 지연시간 최적화 설정 */}
+            <Accordion sx={{ mb: 2 }}>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  ⏱️ 지연시간 최적화 설정
+                </Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={4}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={latencySettings.startupProbe.enabled}
+                          onChange={(e) => setLatencySettings(prev => ({
+                            ...prev,
+                            startupProbe: { ...prev.startupProbe, enabled: e.target.checked }
+                          }))}
+                        />
+                      }
+                      label="Startup Probe 활성화"
+                    />
+                    {latencySettings.startupProbe.enabled && (
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="초기 지연 시간 (초)"
+                        type="number"
+                        value={latencySettings.startupProbe.initialDelaySeconds}
+                        onChange={(e) => setLatencySettings(prev => ({
+                          ...prev,
+                          startupProbe: { ...prev.startupProbe, initialDelaySeconds: parseInt(e.target.value) }
+                        }))}
+                        sx={{ mt: 1 }}
+                      />
+                    )}
+                  </Grid>
+                  
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      label="Liveness Probe 초기 지연 (초)"
+                      type="number"
+                      value={latencySettings.livenessProbe.initialDelaySeconds}
+                      onChange={(e) => setLatencySettings(prev => ({
+                        ...prev,
+                        livenessProbe: { ...prev.livenessProbe, initialDelaySeconds: parseInt(e.target.value) }
+                      }))}
+                      helperText="컨테이너 시작 후 첫 검사까지의 대기 시간"
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      label="Readiness Probe 초기 지연 (초)"
+                      type="number"
+                      value={latencySettings.readinessProbe.initialDelaySeconds}
+                      onChange={(e) => setLatencySettings(prev => ({
+                        ...prev,
+                        readinessProbe: { ...prev.readinessProbe, initialDelaySeconds: parseInt(e.target.value) }
+                      }))}
+                      helperText="트래픽 수신 준비 검사 시작 시간"
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Max Surge"
+                      value={latencySettings.rollingUpdate.maxSurge}
+                      onChange={(e) => setLatencySettings(prev => ({
+                        ...prev,
+                        rollingUpdate: { ...prev.rollingUpdate, maxSurge: e.target.value }
+                      }))}
+                      helperText="업데이트 중 추가 생성 가능한 Pod 수 (예: 25%, 2)"
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Max Unavailable"
+                      value={latencySettings.rollingUpdate.maxUnavailable}
+                      onChange={(e) => setLatencySettings(prev => ({
+                        ...prev,
+                        rollingUpdate: { ...prev.rollingUpdate, maxUnavailable: e.target.value }
+                      }))}
+                      helperText="업데이트 중 사용 불가능한 Pod 수 (예: 25%, 1)"
+                    />
+                  </Grid>
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+
+            {/* 리소스 제한 설정 */}
+            <Accordion sx={{ mb: 2 }}>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  💾 리소스 제한 설정
+                </Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={3}>
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" gutterBottom color="primary">
+                      리소스 요청량 (Requests) - 보장되는 최소 리소스
+                    </Typography>
+                  </Grid>
+                  
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      label="CPU 요청량"
+                      value={resourceSettings.requests.cpu}
+                      onChange={(e) => setResourceSettings(prev => ({
+                        ...prev,
+                        requests: { ...prev.requests, cpu: e.target.value }
+                      }))}
+                      helperText="예: 100m, 0.5, 1"
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      label="메모리 요청량"
+                      value={resourceSettings.requests.memory}
+                      onChange={(e) => setResourceSettings(prev => ({
+                        ...prev,
+                        requests: { ...prev.requests, memory: e.target.value }
+                      }))}
+                      helperText="예: 256Mi, 1Gi, 2Gi"
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      label="스토리지 요청량"
+                      value={resourceSettings.requests.ephemeralStorage || ''}
+                      onChange={(e) => setResourceSettings(prev => ({
+                        ...prev,
+                        requests: { ...prev.requests, ephemeralStorage: e.target.value }
+                      }))}
+                      helperText="예: 1Gi, 5Gi"
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" gutterBottom color="primary" sx={{ mt: 2 }}>
+                      리소스 제한량 (Limits) - 최대 사용 가능한 리소스
+                    </Typography>
+                  </Grid>
+                  
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      label="CPU 제한량"
+                      value={resourceSettings.limits.cpu}
+                      onChange={(e) => setResourceSettings(prev => ({
+                        ...prev,
+                        limits: { ...prev.limits, cpu: e.target.value }
+                      }))}
+                      helperText="예: 1000m, 2, 4"
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      label="메모리 제한량"
+                      value={resourceSettings.limits.memory}
+                      onChange={(e) => setResourceSettings(prev => ({
+                        ...prev,
+                        limits: { ...prev.limits, memory: e.target.value }
+                      }))}
+                      helperText="예: 1Gi, 2Gi, 4Gi"
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      label="스토리지 제한량"
+                      value={resourceSettings.limits.ephemeralStorage || ''}
+                      onChange={(e) => setResourceSettings(prev => ({
+                        ...prev,
+                        limits: { ...prev.limits, ephemeralStorage: e.target.value }
+                      }))}
+                      helperText="예: 2Gi, 10Gi"
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={12}>
+                    <FormControl fullWidth>
+                      <InputLabel>QoS 클래스</InputLabel>
+                      <Select
+                        value={resourceSettings.qosClass}
+                        onChange={(e) => setResourceSettings(prev => ({
+                          ...prev,
+                          qosClass: e.target.value as 'Guaranteed' | 'Burstable' | 'BestEffort'
+                        }))}
+                        label="QoS 클래스"
+                      >
+                        <MenuItem value="Guaranteed">Guaranteed - 최고 우선순위</MenuItem>
+                        <MenuItem value="Burstable">Burstable - 중간 우선순위</MenuItem>
+                        <MenuItem value="BestEffort">BestEffort - 최저 우선순위</MenuItem>
+                      </Select>
+                      <FormHelperText>
+                        Pod의 서비스 품질 클래스를 결정합니다
+                      </FormHelperText>
+                    </FormControl>
+                  </Grid>
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+            
+            <Box sx={{ mt: 4, textAlign: 'center' }}>
+              <Alert severity="info" sx={{ mb: 3 }}>
+                <AlertTitle>🚀 매니페스트 생성 준비 완료!</AlertTitle>
+                <Typography variant="body2">
+                  모든 설정이 완료되었습니다. '다음' 버튼을 클릭하면 매니페스트가 자동으로 생성됩니다.
+                </Typography>
+              </Alert>
+              
+
+            </Box>
+          </StepCard>
+        );
+
+      case 6:
+        return (
+          <StepCard>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" gutterBottom color="primary">
+                📋 7단계: 매니페스트 생성 준비
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 모든 설정이 완료되었습니다. 이제 Kubernetes 매니페스트를 생성할 준비가 되었습니다.
@@ -1077,7 +1638,7 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
                       🔑 환경변수 설정
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      로그 레벨, 환경, 시간대 등 기본 설정 완료
+                      API 키, 데이터베이스 연결 등 환경변수 설정 완료
                     </Typography>
                   </Box>
                   
@@ -1105,6 +1666,15 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                       서비스 상태 모니터링 설정 완료
+                    </Typography>
+                  </Box>
+                  
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" fontWeight="bold" color="success.main">
+                      🚀 Kubernetes 고급 설정
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      오토스케일링, 지연시간 최적화, 리소스 제한 설정 완료
                     </Typography>
                   </Box>
                 </Paper>
@@ -1153,21 +1723,19 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
               <Alert severity="info" sx={{ mb: 3 }}>
                 <AlertTitle>🚀 매니페스트 생성 준비 완료!</AlertTitle>
                 <Typography variant="body2">
-                  모든 설정이 완료되었습니다. '다음' 버튼을 클릭하면 매니페스트가 자동으로 생성됩니다.
+                  '다음' 버튼을 클릭하면 Kubernetes 매니페스트 생성을 시작합니다.
                 </Typography>
               </Alert>
-              
-
             </Box>
           </StepCard>
         );
 
-            case 6:
+      case 7:
         return (
           <StepCard>
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" gutterBottom color="primary">
-                📄 7단계: 매니페스트 생성 및 확인
+                📄 8단계: 매니페스트 생성 및 확인
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 Kubernetes 매니페스트를 생성하고 생성된 파일들의 내용을 확인합니다.
@@ -1352,12 +1920,12 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
           </StepCard>
         );
 
-      case 7:
+      case 8:
         return (
           <StepCard>
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" gutterBottom color="primary">
-                🚀 8단계: 다운로드 및 배포
+                🚀 9단계: 다운로드 및 배포
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 생성된 매니페스트를 다운로드하거나 Kubernetes 클러스터에 직접 배포합니다.

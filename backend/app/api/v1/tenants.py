@@ -25,7 +25,7 @@ from app.core.manifest_generator import ManifestGenerator
 from app.models.tenant_specs import (
     TenantSpecs, TenantCreateRequest, ServiceRequirements,
     PresetType, GPUType, EnvironmentVariable, VolumeMount,
-    HealthCheckConfig, NetworkConfig
+    HealthCheckConfig, NetworkConfig, KubernetesAdvancedConfig
 )
 from app.core.ecp_calculator_adapter import ECPCalculatorAdapter
 
@@ -534,11 +534,26 @@ async def list_tenants():
         )
 
 
+class ManifestGenerationRequest(BaseModel):
+    """매니페스트 생성 요청"""
+    callbot: int = Field(0, ge=0, description="콜봇 채널 수")
+    chatbot: int = Field(0, ge=0, description="챗봇 사용자 수")
+    advisor: int = Field(0, ge=0, description="어드바이저 상담사 수")
+    stt: int = Field(0, ge=0, description="독립 STT 채널 수")
+    tts: int = Field(0, ge=0, description="독립 TTS 채널 수")
+    ta: int = Field(0, ge=0, description="TA 분석 요청 수")
+    qa: int = Field(0, ge=0, description="QA 품질관리 요청 수")
+    gpu_type: str = Field("auto", description="GPU 타입")
+    cloud_provider: str = Field("iaas", description="클라우드 제공업체")
+    
+    # [advice from AI] Kubernetes 고급 설정 추가
+    kubernetes_advanced_config: Optional[KubernetesAdvancedConfig] = Field(None, description="Kubernetes 고급 설정")
+
+
 @router.post("/{tenant_id}/generate-manifests")
 async def generate_tenant_manifests(
     tenant_id: str,
-    service_requirements: ServiceRequirements,
-    gpu_type: str = "auto",
+    request: ManifestGenerationRequest,
     tenant_mgr: TenantManager = Depends(get_tenant_manager)
 ):
     """
@@ -548,16 +563,35 @@ async def generate_tenant_manifests(
     try:
         logger.info("매니페스트 생성 요청", tenant_id=tenant_id)
         
+        # 서비스 요구사항 추출
+        service_requirements = ServiceRequirements(
+            callbot=request.callbot,
+            chatbot=request.chatbot,
+            advisor=request.advisor,
+            stt=request.stt,
+            tts=request.tts,
+            ta=request.ta,
+            qa=request.qa
+        )
+        
         # 테넌시 사양 생성
         tenant_specs = tenant_mgr.generate_tenant_specs(
             tenant_id=tenant_id,
             service_requirements=service_requirements.model_dump(),
-            gpu_type=gpu_type
+            gpu_type=request.gpu_type
         )
         
-        # 매니페스트 생성
+        # [advice from AI] 매니페스트 생성 (고급 설정 포함)
         manifest_generator = ManifestGenerator()
-        manifests = manifest_generator.generate_tenant_manifests(tenant_specs)
+        if request.kubernetes_advanced_config:
+            # 고급 설정이 있는 경우 커스터마이즈된 매니페스트 생성
+            manifests = manifest_generator.generate_tenant_manifests_with_advanced_config(
+                tenant_specs, 
+                request.kubernetes_advanced_config
+            )
+        else:
+            # 기본 매니페스트 생성
+            manifests = manifest_generator.generate_tenant_manifests(tenant_specs)
         
         return {
             "success": True,
@@ -727,8 +761,11 @@ async def calculate_detailed_hardware(
     """
     상세 하드웨어 사양 계산 (ECP 계산 엔진 사용)
     """
+    import time
+    start_time = time.time()
+    
     try:
-        logger.info("상세 하드웨어 계산 요청", 
+        logger.info("✅ 상세 하드웨어 계산 요청 시작", 
                    service_requirements=service_requirements.model_dump(), 
                    gpu_type=gpu_type)
         
@@ -741,9 +778,13 @@ async def calculate_detailed_hardware(
             gpu_type
         )
         
-        logger.info("상세 하드웨어 계산 완료", 
+        end_time = time.time()
+        duration = end_time - start_time
+        
+        logger.info("✅ 상세 하드웨어 계산 완료", 
                    success=result.get("success", False),
-                   total_gpus=result.get("summary", {}).get("total_gpu_count", 0))
+                   total_gpus=result.get("summary", {}).get("total_gpu_count", 0),
+                   duration_seconds=round(duration, 2))
         
         return result
         
