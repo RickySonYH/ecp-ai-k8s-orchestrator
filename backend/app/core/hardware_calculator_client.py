@@ -33,18 +33,20 @@ class HardwareCalculatorClient:
     독립적인 하드웨어 계산 서비스와 통신
     """
     
-    def __init__(self, base_url: str = "http://localhost:2992"):
+    def __init__(self, base_url: str = "http://rdc.rickyson.com:5001"):
         """
         클라이언트 초기화
         
         Args:
-            base_url: Server Resource Generator 서비스 URL
+            base_url: 외부 하드웨어 계산기 서비스 URL (검증된 정확한 계산 로직)
         """
         self.base_url = base_url.rstrip('/')
-        self.calculate_endpoint = f"{self.base_url}/api/v1/calculate"
+        self.calculate_endpoint = f"{self.base_url}/api/calculate"
         self.timeout = httpx.Timeout(30.0)
         
-        logger.info("HardwareCalculatorClient 초기화", base_url=self.base_url)
+        logger.info("HardwareCalculatorClient 초기화", 
+                   base_url=self.base_url, 
+                   calculate_endpoint=self.calculate_endpoint)
     
     async def health_check(self) -> bool:
         """
@@ -102,12 +104,13 @@ class HardwareCalculatorClient:
             
             logger.info("하드웨어 계산 요청", 
                        service_requirements=service_requirements, 
-                       gpu_type=gpu_type)
+                       gpu_type=gpu_type,
+                       api_url=self.calculate_endpoint)
             
-            # API 호출
+            # 외부 API 호출
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
-                    f"{self.base_url}/api/v1/calculate",
+                    self.calculate_endpoint,
                     json=request_data.__dict__,
                     headers={"Content-Type": "application/json"}
                 )
@@ -116,11 +119,13 @@ class HardwareCalculatorClient:
                     result = response.json()
                     
                     if result.get("success"):
+                        # 외부 API 응답을 내부 형식으로 변환
+                        converted_result = self._convert_external_api_response(result, service_requirements, gpu_type)
+                        
                         logger.info("하드웨어 계산 성공", 
-                                   message=result.get("message"),
-                                   total_aws_cost=result.get("cost_analysis", {}).get("aws_total_monthly_cost"),
-                                   total_ncp_cost=result.get("cost_analysis", {}).get("ncp_total_monthly_cost"))
-                        return result
+                                   aws_cost_usd=result.get("aws_cost_analysis", {}).get("total_monthly_cost_usd"),
+                                   ncp_cost_krw=result.get("ncp_cost_analysis", {}).get("total_monthly_cost_krw"))
+                        return converted_result
                     else:
                         logger.error("하드웨어 계산 실패", error=result.get("error"))
                         return self._generate_fallback_result(service_requirements, gpu_type)
@@ -166,6 +171,113 @@ class HardwareCalculatorClient:
                 )
         except Exception as e:
             logger.error("동기 하드웨어 계산 오류", error=str(e))
+            return self._generate_fallback_result(service_requirements, gpu_type)
+    
+    def _convert_external_api_response(self, 
+                                     external_result: Dict[str, Any],
+                                     service_requirements: Dict[str, int],
+                                     gpu_type: str) -> Dict[str, Any]:
+        """
+        외부 API 응답을 내부 형식으로 변환
+        
+        Args:
+            external_result: 외부 API 응답
+            service_requirements: 서비스 요구사항
+            gpu_type: GPU 타입
+            
+        Returns:
+            Dict: 내부 형식으로 변환된 응답
+        """
+        try:
+            # 하드웨어 사양 추출 (server_config_table에서)
+            hardware_spec = external_result.get("hardware_specification", {})
+            server_configs = external_result.get("server_config_table", [])
+            
+            # 서버를 GPU/CPU/인프라로 분류
+            gpu_servers = []
+            cpu_servers = []
+            infrastructure_servers = []
+            
+            for server in server_configs:
+                server_info = {
+                    "name": server.get("server_role", "Unknown Server"),
+                    "cpu_cores": server.get("vcpu", 0),
+                    "ram_gb": server.get("vram", 0),
+                    "gpu_type": server.get("gpu", "").upper() if server.get("gpu") else None,
+                    "gpu_ram_gb": server.get("gpu_ram_gb", 0),
+                    "gpu_quantity": server.get("gpu_quantity", 0),
+                    "storage_gb": server.get("vdisk_ebs", 0) + server.get("vdisk_instance", 0),
+                    "quantity": server.get("quantity", 1),
+                    "purpose": f"{server.get('server_role', 'Unknown')} 서버"
+                }
+                
+                if server.get("gpu"):
+                    gpu_servers.append(server_info)
+                elif any(keyword in server.get("server_role", "").lower() 
+                        for keyword in ["stt", "ta", "qa", "tts"]):
+                    cpu_servers.append(server_info)
+                else:
+                    infrastructure_servers.append(server_info)
+            
+            # AWS 인스턴스 정보 변환
+            aws_instances = []
+            aws_analysis = external_result.get("aws_cost_analysis", {})
+            for instance in aws_analysis.get("instance_breakdown", []):
+                aws_instances.append({
+                    "server_type": instance.get("server_role", "Unknown"),
+                    "instance_type": instance.get("aws_instance", {}).get("instance_type", "unknown"),
+                    "cpu_cores": instance.get("aws_instance", {}).get("vcpu", 0),
+                    "ram_gb": instance.get("aws_instance", {}).get("memory_gb", 0),
+                    "gpu_info": f"{instance.get('aws_instance', {}).get('gpu_count', 0)}x {instance.get('aws_instance', {}).get('gpu_type', '')}" if instance.get("aws_instance", {}).get("gpu_count", 0) > 0 else None,
+                    "monthly_cost_krw": int(instance.get("total_monthly_cost", 0) * 1300),  # USD to KRW 대략 환율
+                    "quantity": instance.get("quantity", 1),
+                    "total_cost_krw": int(instance.get("total_monthly_cost", 0) * 1300 * instance.get("quantity", 1))
+                })
+            
+            # NCP 인스턴스 정보 변환
+            ncp_instances = []
+            ncp_analysis = external_result.get("ncp_cost_analysis", {})
+            for instance in ncp_analysis.get("instance_breakdown", []):
+                ncp_instances.append({
+                    "server_type": instance.get("server_role", "Unknown"),
+                    "instance_type": instance.get("ncp_instance", {}).get("instance_type", "unknown"),
+                    "cpu_cores": instance.get("ncp_instance", {}).get("vcpu", 0),
+                    "ram_gb": instance.get("ncp_instance", {}).get("memory_gb", 0),
+                    "gpu_info": f"{instance.get('ncp_instance', {}).get('gpu_count', 0)}x {instance.get('ncp_instance', {}).get('gpu_type', '')}" if instance.get("ncp_instance", {}).get("gpu_count", 0) > 0 else None,
+                    "monthly_cost_krw": int(instance.get("total_monthly_cost", 0)),
+                    "quantity": instance.get("quantity", 1),
+                    "total_cost_krw": int(instance.get("total_monthly_cost", 0) * instance.get("quantity", 1))
+                })
+            
+            # 비용 분석
+            aws_total_cost_krw = int(aws_analysis.get("total_monthly_cost_usd", 0) * 1300)
+            ncp_total_cost_krw = int(ncp_analysis.get("total_monthly_cost_krw", 0))
+            
+            return {
+                "success": True,
+                "message": "하드웨어 계산 완료 (외부 API 연동)",
+                "external_api_source": "rdc.rickyson.com:5001",
+                "input_data": service_requirements,
+                "hardware_specification": {
+                    "gpu_servers": gpu_servers,
+                    "cpu_servers": cpu_servers,
+                    "infrastructure_servers": infrastructure_servers
+                },
+                "aws_instances": aws_instances,
+                "ncp_instances": ncp_instances,
+                "cost_analysis": {
+                    "aws_total_monthly_cost": aws_total_cost_krw,
+                    "ncp_total_monthly_cost": ncp_total_cost_krw,
+                    "cost_difference": aws_total_cost_krw - ncp_total_cost_krw,
+                    "external_api_data": {
+                        "aws_usd": aws_analysis.get("total_monthly_cost_usd", 0),
+                        "ncp_krw": ncp_analysis.get("total_monthly_cost_krw", 0)
+                    }
+                }
+            }
+            
+        except Exception as e:
+            logger.error("외부 API 응답 변환 실패", error=str(e))
             return self._generate_fallback_result(service_requirements, gpu_type)
     
     def _generate_fallback_result(self, 

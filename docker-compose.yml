@@ -116,8 +116,8 @@ services:
       - K8S_CONFIG_PATH=/app/config/kubeconfig
       - TENANT_NAMESPACE_PREFIX=ecp-ai
       
-      # 하드웨어 계산 서비스 연결
-      - HARDWARE_CALCULATOR_URL=http://hardware-calculator:8000
+      # 하드웨어 계산 서비스 연결 (외부 API로 변경)
+      - HARDWARE_CALCULATOR_URL=http://rdc.rickyson.com:5001
       
       # 개발 환경 설정
       - ENVIRONMENT=development

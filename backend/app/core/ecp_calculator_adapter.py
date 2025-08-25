@@ -26,7 +26,11 @@ class ECPCalculatorAdapter:
             # 환경변수에서 URL 가져오기, 없으면 기본값 사용
             import os
             if base_url is None:
-                base_url = os.getenv("HARDWARE_CALCULATOR_URL", "http://localhost:2992")
+                env_url = os.getenv("HARDWARE_CALCULATOR_URL", "http://localhost:2992")
+                base_url = env_url
+                logger.info("환경변수에서 하드웨어 계산기 URL 로드", 
+                           env_var_value=env_url,
+                           final_base_url=base_url)
             
             # 새로운 하드웨어 계산 클라이언트 초기화
             self.hardware_client = HardwareCalculatorClient(base_url)
