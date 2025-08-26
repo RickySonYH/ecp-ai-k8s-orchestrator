@@ -52,5 +52,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD curl -f http://localhost:3000 || exit 1
 
-# 개발 서버 실행 (핫 리로드)
-CMD ["npm", "start"]
+# 개발 서버 실행 (핫 리로드) - 모든 IP에서 접속 허용
+CMD ["npm", "start", "--", "--host", "0.0.0.0"]

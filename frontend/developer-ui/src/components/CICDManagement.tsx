@@ -186,7 +186,486 @@ function TabPanel({ children, value, index }: TabPanelProps) {
   );
 }
 
-const CICDManagement: React.FC = () => {
+// [advice from AI] 데모 모드 샘플 데이터 정의 (20개 서비스)
+const demoServiceImages: ServiceImage[] = [
+  // 메인 서비스 (3개)
+  {
+    serviceName: 'callbot',
+    displayName: 'Callbot Service (콜봇)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/callbot',
+    currentTag: 'v1.2.3',
+    availableTags: ['v1.2.3', 'v1.2.2', 'v1.2.1'],
+    lastUpdated: new Date().toISOString(),
+    scanStatus: 'passed',
+    vulnerabilities: { critical: 0, high: 0, medium: 2, low: 5 }
+  },
+  {
+    serviceName: 'chatbot',
+    displayName: 'Chatbot Service (챗봇)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/chatbot',
+    currentTag: 'v1.1.8',
+    availableTags: ['v1.1.8', 'v1.1.7', 'v1.1.6'],
+    lastUpdated: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'warning',
+    vulnerabilities: { critical: 0, high: 1, medium: 3, low: 8 }
+  },
+  {
+    serviceName: 'advisor',
+    displayName: 'AI Advisor Service (어드바이저)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/advisor',
+    currentTag: 'v1.3.1',
+    availableTags: ['v1.3.1', 'v1.3.0', 'v1.2.9'],
+    lastUpdated: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'passed',
+    vulnerabilities: { critical: 0, high: 0, medium: 1, low: 3 }
+  },
+  
+  // AI/NLP 서비스 (4개)
+  {
+    serviceName: 'stt',
+    displayName: 'Speech-to-Text Service (STT)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/stt',
+    currentTag: 'v1.0.5',
+    availableTags: ['v1.0.5', 'v1.0.4', 'v1.0.3'],
+    lastUpdated: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'critical',
+    vulnerabilities: { critical: 2, high: 3, medium: 5, low: 12 }
+  },
+  {
+    serviceName: 'tts',
+    displayName: 'Text-to-Speech Service (TTS)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/tts',
+    currentTag: 'v1.0.3',
+    availableTags: ['v1.0.3', 'v1.0.2', 'v1.0.1'],
+    lastUpdated: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'warning',
+    vulnerabilities: { critical: 0, high: 2, medium: 4, low: 7 }
+  },
+  {
+    serviceName: 'nlp',
+    displayName: 'NLP Engine Service (NLP)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/nlp',
+    currentTag: 'v1.4.2',
+    availableTags: ['v1.4.2', 'v1.4.1', 'v1.4.0'],
+    lastUpdated: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'passed',
+    vulnerabilities: { critical: 0, high: 0, medium: 1, low: 2 }
+  },
+  {
+    serviceName: 'aicm',
+    displayName: 'AI Conversation Manager (AICM)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/aicm',
+    currentTag: 'v1.2.0',
+    availableTags: ['v1.2.0', 'v1.1.9', 'v1.1.8'],
+    lastUpdated: new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'passed',
+    vulnerabilities: { critical: 0, high: 0, medium: 0, low: 1 }
+  },
+  
+  // 분석 서비스 (2개)
+  {
+    serviceName: 'ta',
+    displayName: 'TA Statistics Analysis (TA통계분석)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/ta',
+    currentTag: 'v1.1.2',
+    availableTags: ['v1.1.2', 'v1.1.1', 'v1.1.0'],
+    lastUpdated: new Date(Date.now() - 15 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'passed',
+    vulnerabilities: { critical: 0, high: 0, medium: 1, low: 4 }
+  },
+  {
+    serviceName: 'qa',
+    displayName: 'QA Quality Management (QA품질관리)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/qa',
+    currentTag: 'v1.0.8',
+    availableTags: ['v1.0.8', 'v1.0.7', 'v1.0.6'],
+    lastUpdated: new Date(Date.now() - 21 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'warning',
+    vulnerabilities: { critical: 0, high: 1, medium: 2, low: 6 }
+  },
+  
+  // 인프라 서비스 (6개)
+  {
+    serviceName: 'nginx',
+    displayName: 'Nginx Web Server (Nginx)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/nginx',
+    currentTag: 'v1.23.4',
+    availableTags: ['v1.23.4', 'v1.23.3', 'v1.23.2'],
+    lastUpdated: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'passed',
+    vulnerabilities: { critical: 0, high: 0, medium: 0, low: 1 }
+  },
+  {
+    serviceName: 'gateway',
+    displayName: 'API Gateway Service (Gateway)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/gateway',
+    currentTag: 'v1.5.1',
+    availableTags: ['v1.5.1', 'v1.5.0', 'v1.4.9'],
+    lastUpdated: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'passed',
+    vulnerabilities: { critical: 0, high: 0, medium: 1, low: 3 }
+  },
+  {
+    serviceName: 'auth',
+    displayName: 'Authentication Service (권한관리)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/auth',
+    currentTag: 'v1.3.7',
+    availableTags: ['v1.3.7', 'v1.3.6', 'v1.3.5'],
+    lastUpdated: new Date(Date.now() - 11 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'passed',
+    vulnerabilities: { critical: 0, high: 0, medium: 0, low: 2 }
+  },
+  {
+    serviceName: 'history',
+    displayName: 'Conversation History (대화이력)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/history',
+    currentTag: 'v1.2.4',
+    availableTags: ['v1.2.4', 'v1.2.3', 'v1.2.2'],
+    lastUpdated: new Date(Date.now() - 14 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'warning',
+    vulnerabilities: { critical: 0, high: 1, medium: 2, low: 5 }
+  },
+  {
+    serviceName: 'scenario-builder',
+    displayName: 'Scenario Builder (시나리오빌더)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/scenario-builder',
+    currentTag: 'v1.1.6',
+    availableTags: ['v1.1.6', 'v1.1.5', 'v1.1.4'],
+    lastUpdated: new Date(Date.now() - 17 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'passed',
+    vulnerabilities: { critical: 0, high: 0, medium: 1, low: 3 }
+  },
+  {
+    serviceName: 'monitoring',
+    displayName: 'System Monitoring (모니터링)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/monitoring',
+    currentTag: 'v1.4.3',
+    availableTags: ['v1.4.3', 'v1.4.2', 'v1.4.1'],
+    lastUpdated: new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'passed',
+    vulnerabilities: { critical: 0, high: 0, medium: 0, low: 1 }
+  },
+  
+  // 데이터 서비스 (3개)
+  {
+    serviceName: 'postgresql',
+    displayName: 'PostgreSQL Database (PostgreSQL)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/postgresql',
+    currentTag: 'v15.4',
+    availableTags: ['v15.4', 'v15.3', 'v15.2'],
+    lastUpdated: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'passed',
+    vulnerabilities: { critical: 0, high: 0, medium: 0, low: 2 }
+  },
+  {
+    serviceName: 'vector-db',
+    displayName: 'Vector Database (Vector DB)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/vector-db',
+    currentTag: 'v1.0.9',
+    availableTags: ['v1.0.9', 'v1.0.8', 'v1.0.7'],
+    lastUpdated: new Date(Date.now() - 28 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'warning',
+    vulnerabilities: { critical: 0, high: 1, medium: 2, low: 4 }
+  },
+  {
+    serviceName: 'redis',
+    displayName: 'Redis Cache (Redis)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/redis',
+    currentTag: 'v7.2.4',
+    availableTags: ['v7.2.4', 'v7.2.3', 'v7.2.2'],
+    lastUpdated: new Date(Date.now() - 31 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'passed',
+    vulnerabilities: { critical: 0, high: 0, medium: 1, low: 3 }
+  },
+  
+  // 특화 서비스 (2개)
+  {
+    serviceName: 'livekit',
+    displayName: 'LiveKit Real-time (LiveKit)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/livekit',
+    currentTag: 'v1.2.1',
+    availableTags: ['v1.2.1', 'v1.2.0', 'v1.1.9'],
+    lastUpdated: new Date(Date.now() - 34 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'passed',
+    vulnerabilities: { critical: 0, high: 0, medium: 0, low: 1 }
+  },
+  {
+    serviceName: 'speaker-separation',
+    displayName: 'Speaker Separation (화자분리)',
+    registry: 'harbor.ecp-ai.com',
+    repository: 'ecp-ai/speaker-separation',
+    currentTag: 'v1.0.4',
+    availableTags: ['v1.0.4', 'v1.0.3', 'v1.0.2'],
+    lastUpdated: new Date(Date.now() - 37 * 60 * 60 * 1000).toISOString(),
+    scanStatus: 'critical',
+    vulnerabilities: { critical: 1, high: 2, medium: 4, low: 8 }
+  }
+];
+
+const demoBuildPipelines: BuildPipeline[] = [
+  // 메인 서비스 파이프라인
+  {
+    id: 'pipeline-1',
+    name: 'Callbot CI/CD Pipeline',
+    service: 'callbot',
+    status: 'success',
+    lastRun: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    duration: '8분 32초',
+    trigger: 'webhook',
+    isEnabled: true
+  },
+  {
+    id: 'pipeline-2',
+    name: 'Chatbot CI/CD Pipeline',
+    service: 'chatbot',
+    status: 'running',
+    lastRun: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    duration: '진행 중...',
+    trigger: 'webhook',
+    isEnabled: true
+  },
+  {
+    id: 'pipeline-3',
+    name: 'Advisor CI/CD Pipeline',
+    service: 'advisor',
+    status: 'success',
+    lastRun: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+    duration: '12분 15초',
+    trigger: 'manual',
+    isEnabled: true
+  },
+  
+  // AI/NLP 서비스 파이프라인
+  {
+    id: 'pipeline-4',
+    name: 'STT CI/CD Pipeline',
+    service: 'stt',
+    status: 'failed',
+    lastRun: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
+    duration: '6분 45초',
+    trigger: 'schedule',
+    isEnabled: false
+  },
+  {
+    id: 'pipeline-5',
+    name: 'TTS CI/CD Pipeline',
+    service: 'tts',
+    status: 'success',
+    lastRun: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    duration: '9분 20초',
+    trigger: 'webhook',
+    isEnabled: true
+  },
+  {
+    id: 'pipeline-6',
+    name: 'NLP CI/CD Pipeline',
+    service: 'nlp',
+    status: 'success',
+    lastRun: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+    duration: '15분 42초',
+    trigger: 'webhook',
+    isEnabled: true
+  },
+  {
+    id: 'pipeline-7',
+    name: 'AICM CI/CD Pipeline',
+    service: 'aicm',
+    status: 'queued',
+    lastRun: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+    duration: '대기 중...',
+    trigger: 'schedule',
+    isEnabled: true
+  },
+  
+  // 분석 서비스 파이프라인
+  {
+    id: 'pipeline-8',
+    name: 'TA Analysis CI/CD Pipeline',
+    service: 'ta',
+    status: 'success',
+    lastRun: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
+    duration: '11분 8초',
+    trigger: 'manual',
+    isEnabled: true
+  },
+  {
+    id: 'pipeline-9',
+    name: 'QA Management CI/CD Pipeline',
+    service: 'qa',
+    status: 'success',
+    lastRun: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
+    duration: '7분 33초',
+    trigger: 'webhook',
+    isEnabled: true
+  },
+  
+  // 인프라 서비스 파이프라인
+  {
+    id: 'pipeline-10',
+    name: 'Nginx CI/CD Pipeline',
+    service: 'nginx',
+    status: 'success',
+    lastRun: new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString(),
+    duration: '4분 12초',
+    trigger: 'webhook',
+    isEnabled: true
+  },
+  {
+    id: 'pipeline-11',
+    name: 'Gateway CI/CD Pipeline',
+    service: 'gateway',
+    status: 'success',
+    lastRun: new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString(),
+    duration: '6분 55초',
+    trigger: 'webhook',
+    isEnabled: true
+  },
+  {
+    id: 'pipeline-12',
+    name: 'Auth Service CI/CD Pipeline',
+    service: 'auth',
+    status: 'success',
+    lastRun: new Date(Date.now() - 11 * 60 * 60 * 1000).toISOString(),
+    duration: '8분 17초',
+    trigger: 'webhook',
+    isEnabled: true
+  },
+  {
+    id: 'pipeline-13',
+    name: 'History Service CI/CD Pipeline',
+    service: 'history',
+    status: 'success',
+    lastRun: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+    duration: '5분 44초',
+    trigger: 'webhook',
+    isEnabled: true
+  },
+  {
+    id: 'pipeline-14',
+    name: 'Scenario Builder CI/CD Pipeline',
+    service: 'scenario-builder',
+    status: 'success',
+    lastRun: new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString(),
+    duration: '13분 21초',
+    trigger: 'manual',
+    isEnabled: true
+  },
+  {
+    id: 'pipeline-15',
+    name: 'Monitoring CI/CD Pipeline',
+    service: 'monitoring',
+    status: 'success',
+    lastRun: new Date(Date.now() - 14 * 60 * 60 * 1000).toISOString(),
+    duration: '9분 8초',
+    trigger: 'webhook',
+    isEnabled: true
+  },
+  
+  // 데이터 서비스 파이프라인
+  {
+    id: 'pipeline-16',
+    name: 'PostgreSQL CI/CD Pipeline',
+    service: 'postgresql',
+    status: 'success',
+    lastRun: new Date(Date.now() - 15 * 60 * 60 * 1000).toISOString(),
+    duration: '18분 45초',
+    trigger: 'schedule',
+    isEnabled: true
+  },
+  {
+    id: 'pipeline-17',
+    name: 'Vector DB CI/CD Pipeline',
+    service: 'vector-db',
+    status: 'success',
+    lastRun: new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString(),
+    duration: '22분 13초',
+    trigger: 'manual',
+    isEnabled: true
+  },
+  {
+    id: 'pipeline-18',
+    name: 'Redis CI/CD Pipeline',
+    service: 'redis',
+    status: 'success',
+    lastRun: new Date(Date.now() - 17 * 60 * 60 * 1000).toISOString(),
+    duration: '3분 56초',
+    trigger: 'webhook',
+    isEnabled: true
+  },
+  
+  // 특화 서비스 파이프라인
+  {
+    id: 'pipeline-19',
+    name: 'LiveKit CI/CD Pipeline',
+    service: 'livekit',
+    status: 'success',
+    lastRun: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(),
+    duration: '16분 29초',
+    trigger: 'webhook',
+    isEnabled: true
+  },
+  {
+    id: 'pipeline-20',
+    name: 'Speaker Separation CI/CD Pipeline',
+    service: 'speaker-separation',
+    status: 'failed',
+    lastRun: new Date(Date.now() - 19 * 60 * 60 * 1000).toISOString(),
+    duration: '14분 7초',
+    trigger: 'manual',
+    isEnabled: false
+  }
+];
+
+const demoRegistries: ContainerRegistry[] = [
+  {
+    id: '1',
+    name: 'ECP Harbor Registry',
+    url: 'harbor.ecp-ai.com',
+    type: 'harbor',
+    isDefault: true,
+    status: 'connected',
+    lastSync: new Date().toISOString()
+  },
+  {
+    id: '2',
+    name: 'AWS ECR Registry',
+    url: '123456789012.dkr.ecr.ap-northeast-2.amazonaws.com',
+    type: 'ecr',
+    isDefault: false,
+    status: 'connected',
+    lastSync: new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  },
+  {
+    id: '3',
+    name: 'Docker Hub',
+    url: 'docker.io',
+    type: 'docker-hub',
+    isDefault: false,
+    status: 'disconnected',
+    lastSync: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  }
+];
+
+const CICDManagement: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = true }) => {
   const [currentTab, setCurrentTab] = useState(0);
   const [registries, setRegistries] = useState<ContainerRegistry[]>([]);
   const [serviceImages, setServiceImages] = useState<ServiceImage[]>([]);
@@ -202,12 +681,21 @@ const CICDManagement: React.FC = () => {
   // 초기 데이터 로드
   useEffect(() => {
     loadInitialData();
-  }, []);
+  }, [isDemoMode]);
 
   const loadInitialData = async () => {
     setLoading(true);
     try {
-      // 실제 API 호출 (이미지 관리 API 추가)
+      if (isDemoMode) {
+        // [advice from AI] 데모 모드: 샘플 데이터 사용
+        setRegistries(demoRegistries);
+        setServiceImages(demoServiceImages);
+        setBuildPipelines(demoBuildPipelines);
+        setLoading(false);
+        return;
+      }
+
+      // 실제 모드: API 호출
       const [registriesRes, servicesRes, pipelinesRes, imageManagementRes] = await Promise.all([
         fetch('/api/v1/images/registries'),
         fetch('/api/v1/images/services'),

@@ -1,0 +1,5 @@
+[33m458c576[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mexternal-api-integration[m[33m, [m[1;31morigin/external-api-integration[m[33m)[m 🔧 하드웨어 계산 파일들 통합
+[33m54df087[m[33m ([m[1;33mtag: [m[1;33mv1.0[m[33m)[m 🚀 Release v1.0: ECP-AI Kubernetes Orchestrator 완성
+[33m60b64c8[m[33m ([m[1;33mtag: [m[1;33mv0.9.0[m[33m)[m 🚀 테넌시 & CI/CD Manager 0.9V 완성
+[33m7d51292[m[33m ([m[1;33mtag: [m[1;33mv1.0-external-api[m[33m)[m 외부 API 연동 완료 - 웹사이트 호환 요청 구조로 변경
+[33m2336332[m ✅ 외부 API 연동 완료 - 6배 비용 절감 달성

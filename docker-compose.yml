@@ -151,15 +151,15 @@ services:
       # 개발용 캐시 디렉토리
       - backend_cache:/app/.cache
     ports:
-      - "8000:8000"
-      - "8001:8001"  # 개발용 추가 포트
+      - "8001:8000"  # [advice from AI] 포트 충돌 방지를 위해 8001번으로 변경
+      - "8002:8001"  # 개발용 추가 포트
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      hardware-calculator:
-        condition: service_healthy
+      # hardware-calculator:
+      #   condition: service_healthy
     networks:
       - ecp-network
     restart: unless-stopped
@@ -200,6 +200,13 @@ services:
       - SKIP_PREFLIGHT_CHECK=true
       - WDS_SOCKET_HOST=localhost
       - WDS_SOCKET_PORT=3000
+      # [advice from AI] 외부 도메인 접속을 위한 호스트 헤더 검증 우회
+      - DANGEROUSLY_DISABLE_HOST_CHECK=true
+      - HOST=0.0.0.0
+      - WDS_SOCKET_HOST=rdc.rickyson.com
+      - WDS_SOCKET_PORT=3002
+      - CHOKIDAR_USEPOLLING=true
+      - FAST_REFRESH=false
       
       # 개발용 디버깅
       - REACT_APP_DEBUG=true

@@ -73,7 +73,7 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
-const AdvancedMonitoring: React.FC = () => {
+const AdvancedMonitoring: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = true }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [selectedTenant, setSelectedTenant] = useState('all');
   const [timeRange, setTimeRange] = useState('1h');
@@ -86,14 +86,96 @@ const AdvancedMonitoring: React.FC = () => {
   const [slaMetrics, setSlaMetrics] = useState<any>({});
   const [alerts, setAlerts] = useState<any[]>([]);
 
-  // 데모 테넌시 목록
+  // [advice from AI] 데모 테넌시 목록 (20개 - CI/CD 서비스와 일치)
   const demoTenants = [
+    // 메인 서비스 테넌시
     { id: 'tenant-001', name: '글로벌 콜센터', preset: 'large', status: 'healthy' },
     { id: 'tenant-002', name: '스마트 상담봇', preset: 'medium', status: 'warning' },
-    { id: 'tenant-003', name: '음성 분석 서비스', preset: 'small', status: 'healthy' },
-    { id: 'tenant-004', name: 'AI 어드바이저', preset: 'medium', status: 'critical' },
-    { id: 'tenant-005', name: '개발 테스트', preset: 'micro', status: 'healthy' }
+    { id: 'tenant-003', name: 'AI 어드바이저', preset: 'medium', status: 'healthy' },
+    
+    // AI/NLP 서비스 테넌시
+    { id: 'tenant-004', name: '음성 분석 서비스', preset: 'small', status: 'healthy' },
+    { id: 'tenant-005', name: 'TTS 음성합성', preset: 'small', status: 'critical' },
+    { id: 'tenant-006', name: 'NLP 엔진', preset: 'medium', status: 'healthy' },
+    { id: 'tenant-007', name: 'AI 대화 관리', preset: 'large', status: 'warning' },
+    
+    // 분석 서비스 테넌시
+    { id: 'tenant-008', name: 'TA 통계분석', preset: 'medium', status: 'healthy' },
+    { id: 'tenant-009', name: 'QA 품질관리', preset: 'small', status: 'healthy' },
+    
+    // 인프라 서비스 테넌시
+    { id: 'tenant-010', name: '웹 서버 클러스터', preset: 'large', status: 'healthy' },
+    { id: 'tenant-011', name: 'API 게이트웨이', preset: 'medium', status: 'healthy' },
+    { id: 'tenant-012', name: '권한 관리 시스템', preset: 'medium', status: 'warning' },
+    { id: 'tenant-013', name: '대화 이력 저장소', preset: 'large', status: 'healthy' },
+    { id: 'tenant-014', name: '시나리오 빌더', preset: 'medium', status: 'healthy' },
+    { id: 'tenant-015', name: '시스템 모니터링', preset: 'medium', status: 'healthy' },
+    
+    // 데이터 서비스 테넌시
+    { id: 'tenant-016', name: '데이터베이스 클러스터', preset: 'large', status: 'healthy' },
+    { id: 'tenant-017', name: '벡터 데이터베이스', preset: 'medium', status: 'warning' },
+    { id: 'tenant-018', name: '캐시 시스템', preset: 'medium', status: 'healthy' },
+    
+    // 특화 서비스 테넌시
+    { id: 'tenant-019', name: '실시간 통신', preset: 'medium', status: 'healthy' },
+    { id: 'tenant-020', name: '화자 분리 시스템', preset: 'small', status: 'critical' }
   ];
+
+  // [advice from AI] 데모 모드에 따른 데이터 로드 분기
+  useEffect(() => {
+    if (isDemoMode) {
+      // 데모 모드: 가상 데이터 생성
+      loadDemoData();
+    } else {
+      // 실제 모드: 실제 API 데이터 로드
+      loadRealData();
+    }
+  }, [isDemoMode, timeRange]);
+
+  // 데모 데이터 로드 함수
+  const loadDemoData = () => {
+    setRealtimeData(generateRealtimeData());
+    setTenantComparisonData(generateTenantComparisonData());
+    setSlaMetrics(generateSLAMetrics());
+    setAlerts(generateAlerts());
+  };
+
+  // 실제 데이터 로드 함수
+  const loadRealData = async () => {
+    try {
+      // 실제 모니터링 API 호출
+      const [realtimeRes, comparisonRes, slaRes, alertsRes] = await Promise.all([
+        fetch('http://localhost:8001/api/v1/tenants/monitoring/system-metrics'),
+        fetch('http://localhost:8001/api/v1/tenants/monitoring/tenant-comparison'),
+        fetch('http://localhost:8001/api/v1/tenants/monitoring/sla-trends'),
+        fetch('http://localhost:8001/api/v1/tenants/monitoring/alerts')
+      ]);
+
+      if (realtimeRes.ok) {
+        const realtimeData = await realtimeRes.json();
+        setRealtimeData(realtimeData.metrics || []);
+      }
+
+      if (comparisonRes.ok) {
+        const comparisonData = await comparisonRes.json();
+        setTenantComparisonData(comparisonData.tenants || []);
+      }
+
+      if (slaRes.ok) {
+        const slaData = await slaRes.json();
+        setSlaMetrics(slaData.metrics || []);
+      }
+
+      if (alertsRes.ok) {
+        const alertsData = await alertsRes.json();
+        setAlerts(alertsData.alerts || []);
+      }
+    } catch (error) {
+      console.error('실제 모니터링 데이터 로드 실패:', error);
+      // API 실패 시 데모 데이터로 폴백
+      loadDemoData();
+    }
+  };
 
   // 가상 데이터 생성 함수
   const generateRealtimeData = () => {
@@ -174,111 +256,27 @@ const AdvancedMonitoring: React.FC = () => {
   };
 
   // 백엔드에서 실제 데이터 가져오기
-  const fetchSystemMetrics = async () => {
-    try {
-      const response = await fetch('/api/v1/tenants/monitoring/system-metrics');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          // API 데이터를 차트 형식에 맞게 변환
-          const chartData = data.metrics.map((metric: any) => ({
-            time: new Date(metric.timestamp).toLocaleTimeString(),
-            timestamp: new Date(metric.timestamp).getTime(),
-            cpu: metric.cpu_usage,
-            memory: metric.memory_usage,
-            gpu: metric.gpu_usage,
-            network: metric.network_io,
-            requests: metric.total_requests,
-            errors: Math.floor(metric.error_rate * 10),
-            responseTime: Math.random() * 200 + 50 // API에서 제공하지 않는 데이터는 임시 생성
-          }));
-          setRealtimeData(chartData);
-        }
-      }
-    } catch (error) {
-      console.error('시스템 메트릭 조회 실패:', error);
-      // 에러 시 가상 데이터 사용
-      setRealtimeData(generateRealtimeData());
-    }
-  };
-
-  const fetchTenantComparison = async () => {
-    try {
-      const response = await fetch('/api/v1/tenants/monitoring/tenant-comparison');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setTenantComparisonData(data.tenants);
-        }
-      }
-    } catch (error) {
-      console.error('테넌시 비교 데이터 조회 실패:', error);
-      setTenantComparisonData(generateTenantComparisonData());
-    }
-  };
-
-  const fetchSLAMetrics = async () => {
-    try {
-      const response = await fetch('/api/v1/tenants/monitoring/sla-trends');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          // API 데이터를 차트 형식에 맞게 변환
-          const chartData = data.trends.map((trend: any) => ({
-            time: trend.hour,
-            timestamp: new Date(trend.timestamp).getTime(),
-            availability: trend.availability,
-            responseTime: trend.response_time,
-            errorRate: trend.error_rate,
-            throughput: trend.throughput
-          }));
-          setSlaMetrics(chartData);
-        }
-      }
-    } catch (error) {
-      console.error('SLA 트렌드 데이터 조회 실패:', error);
-      setSlaMetrics(generateSLAMetrics());
-    }
-  };
-
-  const fetchAlerts = async () => {
-    try {
-      const response = await fetch('/api/v1/tenants/monitoring/alerts');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setAlerts(data.alerts);
-        }
-      }
-    } catch (error) {
-      console.error('알림 데이터 조회 실패:', error);
-      setAlerts(generateAlerts());
-    }
-  };
-
-  // 데이터 업데이트
   useEffect(() => {
-    const updateData = async () => {
-      await Promise.all([
-        fetchSystemMetrics(),
-        fetchTenantComparison(),
-        fetchSLAMetrics(),
-        fetchAlerts()
-      ]);
-      setCurrentTime(new Date());
-    };
-
-    updateData();
-
-    let interval: NodeJS.Timeout;
-    if (autoRefresh) {
-      interval = setInterval(updateData, 5000); // 5초마다 업데이트
+    if (isDemoMode) {
+      // 데모 모드: 자동 새로고침으로 가상 데이터 업데이트
+      const interval = setInterval(() => {
+        setCurrentTime(new Date());
+        if (autoRefresh) {
+          loadDemoData();
+        }
+      }, 5000);
+      return () => clearInterval(interval);
+    } else {
+      // 실제 모드: 실제 API 데이터 주기적 업데이트
+      const interval = setInterval(() => {
+        setCurrentTime(new Date());
+        if (autoRefresh) {
+          loadRealData();
+        }
+      }, 30000); // 30초마다 업데이트
+      return () => clearInterval(interval);
     }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [autoRefresh]);
+  }, [isDemoMode, autoRefresh]);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);

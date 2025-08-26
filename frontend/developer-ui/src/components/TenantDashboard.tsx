@@ -1,665 +1,829 @@
-// [advice from AI] ECP-AI 테넌시 대시보드 컴포넌트 - 실시간 모니터링 및 WebSocket 지원
+// [advice from AI] ECP-AI Kubernetes Orchestrator 테넌시 대시보드
 /**
- * ECP-AI Kubernetes Orchestrator 테넌시 대시보드
- * - 실시간 테넌시 상태 모니터링
- * - WebSocket 기반 실시간 메트릭 업데이트
- * - SLA 메트릭 및 리소스 사용률 시각화
- * - 서비스별 상태 및 헬스 체크
- * - 자동 새로고침 및 빠른 액션
+ * 개별 테넌시의 상세한 상태와 성능을 모니터링하는 대시보드
+ * - 프리셋별 리소스 사용률 및 성능 메트릭
+ * - 서비스별 인스턴스 현황 및 상태
+ * - 실시간 로그 및 알림
+ * - 리소스 스케일링 및 관리 기능
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Grid,
+  Box,
   Card,
   CardContent,
   Typography,
-  Box,
+  Grid,
   Chip,
-  LinearProgress,
-  Button,
+  Avatar,
   List,
   ListItem,
   ListItemText,
   ListItemIcon,
-  Alert,
-  AlertTitle,
-  Paper,
-  Divider,
+  LinearProgress,
   IconButton,
   Tooltip,
-  CircularProgress,
+  Divider,
+  Paper,
+  useTheme,
+  alpha,
+  Button,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  DialogContentText,
-  Snackbar
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
+  Snackbar,
+  Tabs,
+  Tab,
+  Badge
 } from '@mui/material';
 import {
-  CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon,
-  Pending as PendingIcon,
+  Dashboard as DashboardIcon,
+  CloudQueue as CloudIcon,
   Memory as MemoryIcon,
-  Storage as StorageIcon,
   Speed as SpeedIcon,
-  Refresh as RefreshIcon,
-  Settings as SettingsIcon,
-  Delete as DeleteIcon,
-  Visibility as VisibilityIcon,
+  Storage as StorageIcon,
   Timeline as TimelineIcon,
-  NetworkCheck as NetworkCheckIcon,
-  Warning as WarningIcon
+  Refresh as RefreshIcon,
+  TrendingUp as TrendingUpIcon,
+  TrendingDown as TrendingDownIcon,
+  CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
+  Error as ErrorIcon,
+  Info as InfoIcon,
+  Call as CallIcon,
+  Chat as ChatIcon,
+  Person as PersonIcon,
+  RecordVoiceOver as VoiceIcon,
+  VolumeUp as TTSIcon,
+  Analytics as AnalyticsIcon,
+  QuestionAnswer as QAIcon,
+  Settings as SettingsIcon,
+  Scale as ScaleIcon,
+  History as HistoryIcon,
+  Notifications as NotificationsIcon,
+  PlayArrow as PlayIcon,
+  Stop as StopIcon,
+  RestartAlt as RestartIcon,
+  Delete as DeleteIcon,
+  Edit as EditIcon,
+  Save as SaveIcon,
+  Cancel as CancelIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
 // 타입 정의
-interface ServiceStatus {
-  name: string;
-  replicas: {
-    desired: number;
-    available: number;
-    ready: number;
-  };
-  status: string;
-  resources?: {
-    cpu_usage?: number;
-    memory_usage?: number;
-  };
-}
-
-interface SLAMetrics {
-  availability: number;
-  response_time: number;
-  error_rate: number;
-  throughput: number;
-}
-
 interface TenantInfo {
-  tenant_id: string;
-  status: string;
-  services: ServiceStatus[];
-  resources: {
-    gpu: number;
-    cpu: number;
-    memory?: number;
-  };
-  sla_metrics: SLAMetrics;
-  last_updated: string;
+  id: string;
+  name: string;
+  status: 'running' | 'pending' | 'stopped' | 'error';
+  preset: 'micro' | 'small' | 'medium' | 'large';
+  gpuCount: number;
+  cpuCount: number;
+  memoryGB: number;
+  services: string[];
+  createdAt: string;
+  owner: string;
+  description: string;
 }
 
-interface RealtimeMetrics {
-  tenant_id: string;
+interface ServiceInstance {
+  name: string;
+  icon: React.ReactNode;
+  count: number;
+  status: 'healthy' | 'warning' | 'error' | 'starting';
+  color: string;
+  port: number;
+  replicas: number;
+  targetReplicas: number;
+}
+
+interface ResourceUsage {
+  gpu: {
+    total: number;
+    used: number;
+    percentage: number;
+    temperature: number;
+    power: number;
+  };
+  cpu: {
+    total: number;
+    used: number;
+    percentage: number;
+    load: number;
+  };
+  memory: {
+    total: number;
+    used: number;
+    percentage: number;
+    swap: number;
+  };
+  storage: {
+    total: number;
+    used: number;
+    percentage: number;
+    iops: number;
+  };
+}
+
+interface PerformanceMetrics {
+  responseTime: number;
+  throughput: number;
+  errorRate: number;
+  availability: number;
+  uptime: number;
+}
+
+interface LogEntry {
+  id: string;
   timestamp: string;
-  cpu_usage: number;
-  memory_usage: number;
-  gpu_usage: number;
-  network_io: {
-    rx: number;
-    tx: number;
-  };
-  active_connections: number;
+  level: 'info' | 'warning' | 'error' | 'debug';
+  service: string;
+  message: string;
+  details?: any;
 }
 
-interface TenantDashboardProps {
-  tenantId: string;
-  onTenantDeleted?: () => void;
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
 }
 
-// 스타일드 컴포넌트
-const DashboardCard = styled(Card)(({ theme }) => ({
-  height: '100%',
-  display: 'flex',
-  flexDirection: 'column',
+// [advice from AI] 스타일드 컴포넌트 - 현대적인 그라디언트와 그림자 효과
+const StyledCard = styled(Card)(({ theme }) => ({
+  background: theme.palette.mode === 'dark'
+    ? `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.1)}, ${alpha(theme.palette.secondary.main, 0.05)})`
+    : `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.08)}, ${alpha(theme.palette.secondary.main, 0.03)})`,
+  backdropFilter: 'blur(20px)',
+  border: `1px solid ${alpha(theme.palette.divider, 0.2)}`,
+  boxShadow: theme.palette.mode === 'dark' 
+    ? '0 8px 32px rgba(0, 0, 0, 0.3)' 
+    : '0 4px 20px rgba(0, 0, 0, 0.1)',
   transition: 'all 0.3s ease',
   '&:hover': {
-    transform: 'translateY(-2px)',
-    boxShadow: theme.shadows[8],
+    transform: 'translateY(-4px)',
+    boxShadow: theme.palette.mode === 'dark' 
+      ? '0 12px 40px rgba(0, 0, 0, 0.4)' 
+      : '0 8px 30px rgba(0, 0, 0, 0.15)',
   },
 }));
 
-const MetricCard = styled(Paper)(({ theme }) => ({
-  padding: theme.spacing(2),
-  textAlign: 'center',
-  background: `linear-gradient(135deg, ${theme.palette.primary.light}20, ${theme.palette.primary.main}10)`,
-  borderRadius: theme.spacing(2),
+const MetricCard = styled(Box)(({ theme }) => ({
+  padding: theme.spacing(3),
+  borderRadius: theme.shape.borderRadius,
+  background: theme.palette.mode === 'dark'
+    ? `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.15)}, ${alpha(theme.palette.primary.dark, 0.1)})`
+    : `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.1)}, ${alpha(theme.palette.primary.main, 0.05)})`,
+  border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+  position: 'relative',
+  overflow: 'hidden',
+  '&::before': {
+    content: '""',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '2px',
+    background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+  },
 }));
 
-const StatusChip = styled(Chip)<{ status: string }>(({ theme, status }) => {
-  const getColor = () => {
-    switch (status.toLowerCase()) {
-      case 'running': return theme.palette.success.main;
-      case 'pending': return theme.palette.warning.main;
-      case 'failed': case 'error': return theme.palette.error.main;
-      default: return theme.palette.grey[500];
-    }
-  };
+const ServiceIcon = styled(Avatar)(({ theme, color }: { theme: any; color: string }) => ({
+  backgroundColor: color,
+  color: theme.palette.common.white,
+  width: 40,
+  height: 40,
+  fontSize: '1.2rem',
+}));
 
-  return {
-    backgroundColor: getColor(),
-    color: theme.palette.common.white,
-    fontWeight: 'bold',
-  };
-});
+// 프리셋별 리소스 규칙
+const presetRules = {
+  micro: {
+    maxChannels: 10,
+    maxUsers: 50,
+    gpuRange: [1, 2],
+    cpuRange: [4, 8],
+    memoryRange: [8, 16],
+    description: '개발/테스트용 소규모 환경'
+  },
+  small: {
+    maxChannels: 100,
+    maxUsers: 500,
+    gpuRange: [2, 4],
+    cpuRange: [8, 16],
+    memoryRange: [16, 32],
+    description: '중소규모 운영 환경'
+  },
+  medium: {
+    maxChannels: 500,
+    maxUsers: 2000,
+    gpuRange: [4, 8],
+    cpuRange: [16, 32],
+    memoryRange: [32, 64],
+    description: '대규모 운영 환경'
+  },
+  large: {
+    maxChannels: 1000,
+    maxUsers: 5000,
+    gpuRange: [8, 16],
+    cpuRange: [32, 64],
+    memoryRange: [64, 128],
+    description: '엔터프라이즈급 대용량 환경'
+  }
+};
 
-export const TenantDashboard: React.FC<TenantDashboardProps> = ({ 
-  tenantId, 
-  onTenantDeleted 
+// 데모 데이터
+const demoTenantData = {
+  tenant: {
+    id: 'test-download',
+    name: 'test-download',
+    status: 'running' as const,
+    preset: 'small' as const,
+    gpuCount: 3,
+    cpuCount: 31,
+    memoryGB: 16,
+    services: ['callbot', 'chatbot', 'advisor'],
+    createdAt: '2024-01-15T10:30:00Z',
+    owner: 'admin',
+    description: '콜센터 및 챗봇 서비스 테스트 환경'
+  },
+  resources: {
+    gpu: { total: 3, used: 2.1, percentage: 70, temperature: 65, power: 180 },
+    cpu: { total: 31, used: 22.3, percentage: 72, load: 0.72 },
+    memory: { total: 16, used: 11.2, percentage: 70, swap: 0 },
+    storage: { total: 100, used: 45.8, percentage: 46, iops: 1250 }
+  },
+  performance: {
+    responseTime: 45,
+    throughput: 1250,
+    errorRate: 0.2,
+    availability: 99.8,
+    uptime: 168
+  },
+  services: [
+    { name: 'callbot', icon: <CallIcon />, count: 15, status: 'healthy' as const, color: '#3b82f6', port: 8080, replicas: 3, targetReplicas: 3 },
+    { name: 'chatbot', icon: <ChatIcon />, count: 75, status: 'healthy' as const, color: '#10b981', port: 8081, replicas: 5, targetReplicas: 5 },
+    { name: 'advisor', icon: <PersonIcon />, count: 12, status: 'warning' as const, color: '#f59e0b', port: 8082, replicas: 2, targetReplicas: 3 },
+    { name: 'stt', icon: <VoiceIcon />, count: 8, status: 'healthy' as const, color: '#8b5cf6', port: 8083, replicas: 2, targetReplicas: 2 },
+    { name: 'tts', icon: <TTSIcon />, count: 6, status: 'healthy' as const, color: '#ec4899', port: 8084, replicas: 2, targetReplicas: 2 },
+    { name: 'qa', icon: <QAIcon />, count: 4, status: 'healthy' as const, color: '#06b6d4', port: 8085, replicas: 1, targetReplicas: 1 }
+  ],
+  logs: [
+    { id: '1', timestamp: '2분 전', level: 'info' as const, service: 'callbot', message: '새로운 콜 연결 수락됨' },
+    { id: '2', timestamp: '5분 전', level: 'warning' as const, service: 'advisor', message: 'GPU 메모리 사용률 85% 초과' },
+    { id: '3', timestamp: '8분 전', level: 'info' as const, service: 'chatbot', message: '사용자 세션 시작됨' },
+    { id: '4', timestamp: '12분 전', level: 'error' as const, service: 'stt', message: '음성 인식 서비스 일시적 오류' },
+    { id: '5', timestamp: '15분 전', level: 'info' as const, service: 'tts', message: 'TTS 캐시 히트율 92%' }
+  ]
+};
+
+// 상태 아이콘 컴포넌트
+const StatusIcon = ({ status }: { status: string }) => {
+  switch (status) {
+    case 'running':
+      return <CheckCircleIcon color="success" />;
+    case 'pending':
+      return <WarningIcon color="warning" />;
+    case 'stopped':
+      return <InfoIcon color="info" />;
+    case 'error':
+      return <ErrorIcon color="error" />;
+    default:
+      return <InfoIcon color="info" />;
+  }
+};
+
+// 서비스 상태 아이콘 컴포넌트
+const ServiceStatusIcon = ({ status }: { status: string }) => {
+  switch (status) {
+    case 'healthy':
+      return <CheckCircleIcon color="success" />;
+    case 'warning':
+      return <WarningIcon color="warning" />;
+    case 'error':
+      return <ErrorIcon color="error" />;
+    case 'starting':
+      return <InfoIcon color="info" />;
+    default:
+      return <InfoIcon color="info" />;
+  }
+};
+
+// 로그 레벨 아이콘 컴포넌트
+const LogLevelIcon = ({ level }: { level: string }) => {
+  switch (level) {
+    case 'info':
+      return <InfoIcon color="info" />;
+    case 'warning':
+      return <WarningIcon color="warning" />;
+    case 'error':
+      return <ErrorIcon color="error" />;
+    case 'debug':
+      return <InfoIcon color="info" />;
+    default:
+      return <InfoIcon color="info" />;
+  }
+};
+
+// 탭 패널 컴포넌트
+function TabPanel({ children, value, index }: TabPanelProps) {
+  return (
+    <div role="tabpanel" hidden={value !== index}>
+      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
+    </div>
+  );
+}
+
+// 메인 테넌시 대시보드 컴포넌트
+export const TenantDashboard: React.FC<{ tenantId: string; onTenantDeleted: (tenantId: string) => void }> = ({
+  tenantId,
+  onTenantDeleted
 }) => {
-  // 상태 관리
-  const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null);
-  const [realtimeMetrics, setRealtimeMetrics] = useState<RealtimeMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const theme = useTheme();
+  const [currentTab, setCurrentTab] = useState(0);
+  const [data, setData] = useState(demoTenantData);
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [scaleDialogOpen, setScaleDialogOpen] = useState(false);
+  const [selectedService, setSelectedService] = useState<ServiceInstance | null>(null);
+  const [scaleReplicas, setScaleReplicas] = useState(1);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
-  const [wsConnected, setWsConnected] = useState(false);
 
-  // Refs
-  const wsRef = useRef<WebSocket | null>(null);
-  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  // WebSocket 연결 설정
-  const connectWebSocket = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      return; // 이미 연결됨
-    }
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/api/v1/tenants/${tenantId}/metrics`;
-
-    wsRef.current = new WebSocket(wsUrl);
-
-    wsRef.current.onopen = () => {
-      console.log('WebSocket 연결됨:', tenantId);
-      setWsConnected(true);
-      setError(null);
-    };
-
-    wsRef.current.onmessage = (event) => {
-      try {
-        const metrics: RealtimeMetrics = JSON.parse(event.data);
-        setRealtimeMetrics(metrics);
-      } catch (err) {
-        console.error('WebSocket 메시지 파싱 오류:', err);
-      }
-    };
-
-    wsRef.current.onclose = (event) => {
-      console.log('WebSocket 연결 해제:', event.code, event.reason);
-      setWsConnected(false);
-      
-      // 자동 재연결 (3초 후)
-      if (event.code !== 1000) { // 정상 종료가 아닌 경우
-        setTimeout(() => {
-          if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
-            connectWebSocket();
+  // 실시간 데이터 업데이트 (데모용)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setData(prevData => ({
+        ...prevData,
+        resources: {
+          gpu: {
+            ...prevData.resources.gpu,
+            used: Math.max(1.5, Math.min(2.8, prevData.resources.gpu.used + (Math.random() > 0.5 ? 0.1 : -0.1))),
+            temperature: Math.max(60, Math.min(75, prevData.resources.gpu.temperature + (Math.random() > 0.5 ? 1 : -1))),
+          },
+          cpu: {
+            ...prevData.resources.cpu,
+            used: Math.max(18, Math.min(28, prevData.resources.cpu.used + (Math.random() > 0.5 ? 0.5 : -0.5))),
+            load: Math.max(0.6, Math.min(0.85, prevData.resources.cpu.load + (Math.random() > 0.5 ? 0.02 : -0.02))),
+          },
+          memory: {
+            ...prevData.resources.memory,
+            used: Math.max(9, Math.min(13, prevData.resources.memory.used + (Math.random() > 0.5 ? 0.2 : -0.2))),
+          },
+          storage: {
+            ...prevData.resources.storage,
+            used: Math.max(44, Math.min(48, prevData.resources.storage.used + (Math.random() > 0.5 ? 0.1 : -0.1))),
           }
-        }, 3000);
-      }
-    };
-
-    wsRef.current.onerror = (error) => {
-      console.error('WebSocket 오류:', error);
-      setWsConnected(false);
-    };
-  }, [tenantId]);
-
-  // 테넌시 정보 조회
-  const fetchTenantInfo = useCallback(async () => {
-    try {
-      const response = await fetch(`/api/v1/tenants/${tenantId}`);
-      
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('테넌시를 찾을 수 없습니다');
         }
-        throw new Error(`HTTP ${response.status}: 테넌시 정보 조회 실패`);
-      }
+      }));
+      setLastUpdate(new Date());
+    }, 3000);
 
-      const data: TenantInfo = await response.json();
-      setTenantInfo(data);
-      setError(null);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류';
-      setError(errorMessage);
-      console.error('테넌시 정보 조회 실패:', err);
-    } finally {
-      setLoading(false);
+    return () => clearInterval(interval);
+  }, []);
+
+  // 스케일링 다이얼로그 열기
+  const handleScaleService = (service: ServiceInstance) => {
+    setSelectedService(service);
+    setScaleReplicas(service.targetReplicas);
+    setScaleDialogOpen(true);
+  };
+
+  // 스케일링 적용
+  const handleScaleApply = () => {
+    if (selectedService) {
+      setData(prevData => ({
+        ...prevData,
+        services: prevData.services.map(s => 
+          s.name === selectedService.name 
+            ? { ...s, targetReplicas: scaleReplicas }
+            : s
+        )
+      }));
+      setSnackbarMessage(`${selectedService.name} 서비스 레플리카를 ${scaleReplicas}개로 조정했습니다.`);
+      setSnackbarOpen(true);
+      setScaleDialogOpen(false);
     }
-  }, [tenantId]);
+  };
 
   // 테넌시 삭제
-  const handleDeleteTenant = async () => {
-    setDeleting(true);
-    
-    try {
-      const response = await fetch(`/api/v1/tenants/${tenantId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: 테넌시 삭제 실패`);
-      }
-
-      setSnackbarMessage('테넌시가 성공적으로 삭제되었습니다');
-      setSnackbarOpen(true);
-      
-      // WebSocket 연결 해제
-      if (wsRef.current) {
-        wsRef.current.close(1000, '테넌시 삭제됨');
-      }
-
-      // 부모 컴포넌트에 알림
-      if (onTenantDeleted) {
-        setTimeout(() => onTenantDeleted(), 1500);
-      }
-
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '테넌시 삭제 실패';
-      setError(errorMessage);
-    } finally {
-      setDeleting(false);
-      setDeleteDialogOpen(false);
+  const handleDeleteTenant = () => {
+    if (window.confirm('정말로 이 테넌시를 삭제하시겠습니까?')) {
+      onTenantDeleted(tenantId);
     }
   };
 
-  // 컴포넌트 마운트/언마운트 처리
-  useEffect(() => {
-    fetchTenantInfo();
-    connectWebSocket();
-
-    // 자동 새로고침 (30초마다)
-    refreshIntervalRef.current = setInterval(fetchTenantInfo, 30000);
-
-    return () => {
-      // 정리
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-      }
-      if (wsRef.current) {
-        wsRef.current.close(1000, '컴포넌트 언마운트');
-      }
-    };
-  }, [fetchTenantInfo, connectWebSocket]);
-
-  // 상태 아이콘 가져오기
-  const getStatusIcon = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'running':
-        return <CheckCircleIcon color="success" />;
-      case 'pending':
-        return <PendingIcon color="warning" />;
-      default:
-        return <ErrorIcon color="error" />;
-    }
-  };
-
-  // 프로그레스 바 색상
-  const getProgressColor = (value: number, thresholds: { warning: number; error: number }) => {
-    if (value >= thresholds.error) return 'error';
-    if (value >= thresholds.warning) return 'warning';
-    return 'success';
-  };
-
-  // 로딩 상태
-  if (loading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress size={60} />
-        <Typography variant="h6" sx={{ ml: 2 }}>
-          테넌시 정보 로딩 중...
-        </Typography>
-      </Box>
-    );
-  }
-
-  // 에러 상태
-  if (error) {
-    return (
-      <Alert severity="error" sx={{ mb: 3 }}>
-        <AlertTitle>오류</AlertTitle>
-        {error}
-        <Box sx={{ mt: 2 }}>
-          <Button variant="outlined" onClick={fetchTenantInfo} startIcon={<RefreshIcon />}>
-            다시 시도
-          </Button>
-        </Box>
-      </Alert>
-    );
-  }
-
-  // 테넌시 정보가 없는 경우
-  if (!tenantInfo) {
-    return (
-      <Alert severity="warning">
-        <AlertTitle>테넌시 없음</AlertTitle>
-        테넌시 정보를 찾을 수 없습니다.
-      </Alert>
-    );
-  }
+  // 프리셋 정보 가져오기
+  const presetInfo = presetRules[data.tenant.preset];
 
   return (
-    <Box>
-      {/* 헤더 섹션 */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12}>
-          <DashboardCard>
-            <CardContent>
-              <Box display="flex" justifyContent="space-between" alignItems="center">
-                <Box display="flex" alignItems="center">
-                  <Typography variant="h4" fontWeight="bold" sx={{ mr: 2 }}>
-                    📋 {tenantInfo.tenant_id}
-                  </Typography>
-                  <StatusChip 
-                    label={tenantInfo.status}
-                    status={tenantInfo.status}
-                    icon={getStatusIcon(tenantInfo.status)}
-                  />
-                  <Box sx={{ ml: 2, display: 'flex', alignItems: 'center' }}>
-                    <NetworkCheckIcon 
-                      color={wsConnected ? 'success' : 'error'} 
-                      sx={{ fontSize: 20, mr: 0.5 }}
-                    />
-                    <Typography variant="caption" color="text.secondary">
-                      {wsConnected ? '실시간 연결됨' : '연결 끊어짐'}
-                    </Typography>
-                  </Box>
-                </Box>
-                
-                {/* 빠른 액션 버튼 */}
-                <Box display="flex" gap={1}>
-                  <Tooltip title="새로고침">
-                    <IconButton onClick={fetchTenantInfo} disabled={loading}>
-                      <RefreshIcon />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="설정">
-                    <IconButton color="primary">
-                      <SettingsIcon />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="모니터링">
-                    <IconButton color="info">
-                      <TimelineIcon />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="삭제">
-                    <IconButton 
-                      color="error" 
-                      onClick={() => setDeleteDialogOpen(true)}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
+    <Box sx={{ p: 3 }}>
+      {/* 헤더 */}
+      <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Box>
+          <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 'bold' }}>
+            🏢 {data.tenant.name} 테넌시 대시보드
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            {presetInfo.description} • {data.tenant.description}
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Chip 
+            icon={<RefreshIcon />} 
+            label={`마지막 업데이트: ${lastUpdate.toLocaleTimeString()}`} 
+            variant="outlined" 
+            color="primary" 
+          />
+          <Chip 
+            icon={<StatusIcon status={data.tenant.status} />} 
+            label={data.tenant.status} 
+            color={data.tenant.status === 'running' ? 'success' : 'warning'} 
+            variant="filled" 
+          />
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={handleDeleteTenant}
+          >
+            테넌시 삭제
+          </Button>
+        </Box>
+      </Box>
+
+      {/* 테넌시 기본 정보 */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} md={3}>
+          <MetricCard>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar sx={{ bgcolor: 'primary.main', width: 56, height: 56 }}>
+                <CloudIcon sx={{ fontSize: 28 }} />
+              </Avatar>
+              <Box>
+                <Typography variant="h4" component="div" sx={{ fontWeight: 'bold' }}>
+                  {data.tenant.preset.toUpperCase()}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  프리셋
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  최대 {presetInfo.maxChannels}채널, {presetInfo.maxUsers}사용자
+                </Typography>
               </Box>
-            </CardContent>
-          </DashboardCard>
+            </Box>
+          </MetricCard>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <MetricCard>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar sx={{ bgcolor: 'secondary.main', width: 56, height: 56 }}>
+                <MemoryIcon sx={{ fontSize: 28 }} />
+              </Avatar>
+              <Box>
+                <Typography variant="h4" component="div" sx={{ fontWeight: 'bold' }}>
+                  {data.resources.gpu.used.toFixed(1)}/{data.resources.gpu.total}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  GPU 사용량
+                </Typography>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={data.resources.gpu.percentage} 
+                  sx={{ mt: 1, height: 6, borderRadius: 3 }}
+                />
+              </Box>
+            </Box>
+          </MetricCard>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <MetricCard>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar sx={{ bgcolor: 'success.main', width: 56, height: 56 }}>
+                <SpeedIcon sx={{ fontSize: 28 }} />
+              </Avatar>
+              <Box>
+                <Typography variant="h4" component="div" sx={{ fontWeight: 'bold' }}>
+                  {data.resources.cpu.used.toFixed(1)}/{data.resources.cpu.total}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  CPU 코어
+                </Typography>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={data.resources.cpu.percentage} 
+                  sx={{ mt: 1, height: 6, borderRadius: 3 }}
+                />
+              </Box>
+            </Box>
+          </MetricCard>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <MetricCard>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar sx={{ bgcolor: 'warning.main', width: 56, height: 56 }}>
+                <StorageIcon sx={{ fontSize: 28 }} />
+              </Avatar>
+              <Box>
+                <Typography variant="h4" component="div" sx={{ fontWeight: 'bold' }}>
+                  {data.resources.memory.used.toFixed(1)}/{data.resources.memory.total}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  메모리 (GB)
+                </Typography>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={data.resources.memory.percentage} 
+                  sx={{ mt: 1, height: 6, borderRadius: 3 }}
+                />
+              </Box>
+            </Box>
+          </MetricCard>
         </Grid>
       </Grid>
 
-      <Grid container spacing={3}>
-        {/* SLA 메트릭 */}
-        <Grid item xs={12} md={6}>
-          <DashboardCard>
-            <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                📊 SLA 메트릭
-                <Tooltip title="서비스 수준 협약 지표">
-                  <VisibilityIcon sx={{ ml: 1, fontSize: 20, color: 'text.secondary' }} />
-                </Tooltip>
-              </Typography>
-              
-              <Box sx={{ mt: 2 }}>
-                <Box sx={{ mb: 3 }}>
-                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                    <Typography variant="body2" fontWeight="medium">
-                      가용률 (Availability)
-                    </Typography>
-                    <Typography variant="h6" color="primary.main" fontWeight="bold">
-                      {tenantInfo.sla_metrics.availability?.toFixed(1) || '0.0'}%
-                    </Typography>
-                  </Box>
-                  <LinearProgress 
-                    variant="determinate" 
-                    value={tenantInfo.sla_metrics.availability || 0} 
-                    color={getProgressColor(tenantInfo.sla_metrics.availability || 0, { warning: 95, error: 90 })}
-                    sx={{ height: 8, borderRadius: 4 }}
-                  />
-                </Box>
+      {/* 탭 네비게이션 */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+        <Tabs value={currentTab} onChange={(e, newValue) => setCurrentTab(newValue)}>
+          <Tab label="📊 개요" />
+          <Tab label="🔧 서비스" />
+          <Tab label="📈 성능" />
+          <Tab label="📝 로그" />
+          <Tab label="⚙️ 설정" />
+        </Tabs>
+      </Box>
 
-                <Box sx={{ mb: 3 }}>
-                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                    <Typography variant="body2" fontWeight="medium">
-                      응답 시간 (Response Time)
-                    </Typography>
-                    <Typography variant="h6" color="secondary.main" fontWeight="bold">
-                      {tenantInfo.sla_metrics.response_time?.toFixed(0) || '0'}ms
-                    </Typography>
-                  </Box>
-                  <LinearProgress 
-                    variant="determinate" 
-                    value={Math.max(0, 100 - ((tenantInfo.sla_metrics.response_time || 0) / 10))}
-                    color={getProgressColor(tenantInfo.sla_metrics.response_time || 0, { warning: 300, error: 500 })}
-                    sx={{ height: 8, borderRadius: 4 }}
-                  />
+      {/* 탭 컨텐츠 */}
+      <TabPanel value={currentTab} index={0}>
+        {/* 개요 탭 */}
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={8}>
+            <StyledCard>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+                  <DashboardIcon color="primary" />
+                  <Typography variant="h6" component="h2" sx={{ fontWeight: 'bold' }}>
+                    리소스 사용 현황
+                  </Typography>
                 </Box>
-
                 <Grid container spacing={2}>
-                  <Grid item xs={6}>
-                    <MetricCard>
-                      <Typography variant="caption" color="text.secondary">
-                        에러율
-                      </Typography>
-                      <Typography variant="h6" fontWeight="bold">
-                        {tenantInfo.sla_metrics.error_rate?.toFixed(2) || '0.00'}%
-                      </Typography>
-                    </MetricCard>
+                  <Grid item xs={12} md={6}>
+                    <Paper sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>GPU 상세 정보</Typography>
+                      <Typography variant="body2">온도: {data.resources.gpu.temperature}°C</Typography>
+                      <Typography variant="body2">전력: {data.resources.gpu.power}W</Typography>
+                      <Typography variant="body2">사용률: {data.resources.gpu.percentage}%</Typography>
+                    </Paper>
                   </Grid>
-                  <Grid item xs={6}>
-                    <MetricCard>
-                      <Typography variant="caption" color="text.secondary">
-                        처리량
-                      </Typography>
-                      <Typography variant="h6" fontWeight="bold">
-                        {tenantInfo.sla_metrics.throughput || 0}req/min
-                      </Typography>
-                    </MetricCard>
+                  <Grid item xs={12} md={6}>
+                    <Paper sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>CPU 상세 정보</Typography>
+                      <Typography variant="body2">로드: {(data.resources.cpu.load * 100).toFixed(1)}%</Typography>
+                      <Typography variant="body2">사용률: {data.resources.cpu.percentage}%</Typography>
+                      <Typography variant="body2">코어: {data.resources.cpu.total}개</Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Paper sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>메모리 상세 정보</Typography>
+                      <Typography variant="body2">사용률: {data.resources.memory.percentage}%</Typography>
+                      <Typography variant="body2">스왑: {data.resources.memory.swap}GB</Typography>
+                      <Typography variant="body2">총 용량: {data.resources.memory.total}GB</Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Paper sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>스토리지 상세 정보</Typography>
+                      <Typography variant="body2">사용률: {data.resources.storage.percentage}%</Typography>
+                      <Typography variant="body2">IOPS: {data.resources.storage.iops}</Typography>
+                      <Typography variant="body2">총 용량: {data.resources.storage.total}GB</Typography>
+                    </Paper>
                   </Grid>
                 </Grid>
-              </Box>
-            </CardContent>
-          </DashboardCard>
-        </Grid>
-
-        {/* 실시간 리소스 현황 */}
-        <Grid item xs={12} md={6}>
-          <DashboardCard>
-            <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                💻 실시간 리소스 현황
-                {realtimeMetrics && (
-                  <Chip 
-                    label="LIVE" 
-                    color="error" 
-                    size="small" 
-                    sx={{ ml: 1, animation: 'pulse 2s infinite' }}
-                  />
-                )}
-              </Typography>
-
-              {realtimeMetrics ? (
-                <Box sx={{ mt: 2 }}>
-                  <Box sx={{ mb: 2 }}>
-                    <Box display="flex" alignItems="center" mb={1}>
-                      <SpeedIcon sx={{ mr: 1, color: 'primary.main' }} />
-                      <Typography variant="body2" fontWeight="medium">
-                        CPU 사용률: {realtimeMetrics.cpu_usage?.toFixed(1) || '0.0'}%
-                      </Typography>
-                    </Box>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={realtimeMetrics.cpu_usage || 0}
-                      color={getProgressColor(realtimeMetrics.cpu_usage || 0, { warning: 70, error: 90 })}
-                      sx={{ height: 6, borderRadius: 3 }}
-                    />
-                  </Box>
-
-                  <Box sx={{ mb: 2 }}>
-                    <Box display="flex" alignItems="center" mb={1}>
-                      <MemoryIcon sx={{ mr: 1, color: 'secondary.main' }} />
-                      <Typography variant="body2" fontWeight="medium">
-                        메모리 사용률: {realtimeMetrics.memory_usage?.toFixed(1) || '0.0'}%
-                      </Typography>
-                    </Box>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={realtimeMetrics.memory_usage || 0}
-                      color={getProgressColor(realtimeMetrics.memory_usage || 0, { warning: 80, error: 95 })}
-                      sx={{ height: 6, borderRadius: 3 }}
-                    />
-                  </Box>
-
-                  <Box sx={{ mb: 2 }}>
-                    <Box display="flex" alignItems="center" mb={1}>
-                      <StorageIcon sx={{ mr: 1, color: 'success.main' }} />
-                      <Typography variant="body2" fontWeight="medium">
-                        GPU 사용률: {realtimeMetrics.gpu_usage?.toFixed(1) || '0.0'}%
-                      </Typography>
-                    </Box>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={realtimeMetrics.gpu_usage || 0}
-                      color={getProgressColor(realtimeMetrics.gpu_usage || 0, { warning: 80, error: 95 })}
-                      sx={{ height: 6, borderRadius: 3 }}
-                    />
-                  </Box>
-
-                  <Grid container spacing={1} sx={{ mt: 1 }}>
-                    <Grid item xs={4}>
-                      <MetricCard>
-                        <Typography variant="caption">활성 연결</Typography>
-                        <Typography variant="h6">{realtimeMetrics.active_connections || 0}</Typography>
-                      </MetricCard>
-                    </Grid>
-                    <Grid item xs={4}>
-                      <MetricCard>
-                        <Typography variant="caption">Network RX</Typography>
-                        <Typography variant="h6">{realtimeMetrics.network_io?.rx?.toFixed(1) || '0.0'}MB/s</Typography>
-                      </MetricCard>
-                    </Grid>
-                    <Grid item xs={4}>
-                      <MetricCard>
-                        <Typography variant="caption">Network TX</Typography>
-                        <Typography variant="h6">{realtimeMetrics.network_io?.tx?.toFixed(1) || '0.0'}MB/s</Typography>
-                      </MetricCard>
-                    </Grid>
-                  </Grid>
-                </Box>
-              ) : (
-                <Box display="flex" alignItems="center" justifyContent="center" py={4}>
-                  <CircularProgress size={24} sx={{ mr: 1 }} />
-                  <Typography variant="body2" color="text.secondary">
-                    실시간 메트릭 로딩 중...
+              </CardContent>
+            </StyledCard>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <StyledCard>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+                  <AnalyticsIcon color="primary" />
+                  <Typography variant="h6" component="h2" sx={{ fontWeight: 'bold' }}>
+                    성능 지표
                   </Typography>
                 </Box>
-              )}
-            </CardContent>
-          </DashboardCard>
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary">응답 시간</Typography>
+                  <Typography variant="h6" color="primary">{data.performance.responseTime}ms</Typography>
+                </Box>
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary">처리량</Typography>
+                  <Typography variant="h6" color="secondary">{data.performance.throughput} req/s</Typography>
+                </Box>
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary">에러율</Typography>
+                  <Typography variant="h6" color="error">{data.performance.errorRate}%</Typography>
+                </Box>
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary">가용성</Typography>
+                  <Typography variant="h6" color="success">{data.performance.availability}%</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="body2" color="text.secondary">가동 시간</Typography>
+                  <Typography variant="h6" color="info">{data.performance.uptime}시간</Typography>
+                </Box>
+              </CardContent>
+            </StyledCard>
+          </Grid>
         </Grid>
+      </TabPanel>
 
-        {/* 서비스별 상태 */}
-        <Grid item xs={12}>
-          <DashboardCard>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                🛠️ 서비스 상태
+      <TabPanel value={currentTab} index={1}>
+        {/* 서비스 탭 */}
+        <StyledCard>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+              <TimelineIcon color="primary" />
+              <Typography variant="h6" component="h2" sx={{ fontWeight: 'bold' }}>
+                서비스 인스턴스 현황
               </Typography>
-              
-              <Grid container spacing={2}>
-                {tenantInfo.services.map((service, index) => (
-                  <Grid item xs={12} md={4} key={index}>
-                    <Card variant="outlined" sx={{ height: '100%' }}>
-                      <CardContent>
-                        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                          <Typography variant="h6" fontWeight="medium">
+            </Box>
+            <Grid container spacing={2}>
+              {data.services.map((service) => (
+                <Grid item xs={12} md={6} key={service.name}>
+                  <Paper 
+                    sx={{ 
+                      p: 2, 
+                      background: theme.palette.mode === 'dark' 
+                        ? alpha(theme.palette.background.paper, 0.8) 
+                        : alpha(theme.palette.background.paper, 0.9),
+                      border: `1px solid ${alpha(theme.palette.divider, 0.2)}`
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <ServiceIcon theme={theme} color={service.color}>
+                          {service.icon}
+                        </ServiceIcon>
+                        <Box>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
                             {service.name}
                           </Typography>
-                          <StatusChip 
-                            size="small"
-                            label={service.status}
-                            status={service.status}
-                          />
+                          <Typography variant="body2" color="text.secondary">
+                            포트: {service.port} • 레플리카: {service.replicas}/{service.targetReplicas}
+                          </Typography>
                         </Box>
-                        
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          Replicas: {service.replicas.available} / {service.replicas.desired}
-                          {service.replicas.ready !== service.replicas.available && (
-                            <> (Ready: {service.replicas.ready})</>
-                          )}
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <ServiceStatusIcon status={service.status} />
+                        <IconButton
+                          size="small"
+                          onClick={() => handleScaleService(service)}
+                          color="primary"
+                        >
+                          <ScaleIcon />
+                        </IconButton>
+                      </Box>
+                    </Box>
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        활성 인스턴스: {service.count}개
+                      </Typography>
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={(service.replicas / service.targetReplicas) * 100} 
+                        sx={{ mt: 1, height: 4, borderRadius: 2 }}
+                      />
+                    </Box>
+                  </Paper>
+                </Grid>
+              ))}
+            </Grid>
+          </CardContent>
+        </StyledCard>
+      </TabPanel>
+
+      <TabPanel value={currentTab} index={2}>
+        {/* 성능 탭 */}
+        <StyledCard>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+              <TrendingUpIcon color="primary" />
+              <Typography variant="h6" component="h2" sx={{ fontWeight: 'bold' }}>
+                성능 모니터링
+              </Typography>
+            </Box>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+              실시간 성능 메트릭 및 트렌드 분석
+            </Typography>
+            {/* 여기에 차트 컴포넌트들이 들어갈 예정 */}
+            <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="h6" color="text.secondary">
+                📊 차트 컴포넌트 구현 예정
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Chart.js 또는 Recharts를 사용한 성능 시각화
+              </Typography>
+            </Paper>
+          </CardContent>
+        </StyledCard>
+      </TabPanel>
+
+      <TabPanel value={currentTab} index={3}>
+        {/* 로그 탭 */}
+        <StyledCard>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+              <HistoryIcon color="primary" />
+              <Typography variant="h6" component="h2" sx={{ fontWeight: 'bold' }}>
+                실시간 로그
+              </Typography>
+            </Box>
+            <List>
+              {data.logs.map((log) => (
+                <ListItem key={log.id} sx={{ px: 0 }}>
+                  <ListItemIcon>
+                    <LogLevelIcon level={log.level} />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                          {log.message}
                         </Typography>
-                        
-                        <LinearProgress 
-                          variant="determinate" 
-                          value={(service.replicas.available / service.replicas.desired) * 100}
-                          color={service.replicas.available === service.replicas.desired ? 'success' : 'warning'}
-                          sx={{ mt: 1, height: 6, borderRadius: 3 }}
+                        <Chip 
+                          label={log.service} 
+                          size="small" 
+                          color="primary" 
+                          variant="outlined"
                         />
+                      </Box>
+                    }
+                    secondary={log.timestamp}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          </CardContent>
+        </StyledCard>
+      </TabPanel>
 
-                        {service.resources && (
-                          <Box sx={{ mt: 2 }}>
-                            <Typography variant="caption" display="block">
-                              CPU: {service.resources.cpu_usage?.toFixed(1) || 'N/A'}% | 
-                              Memory: {service.resources.memory_usage?.toFixed(1) || 'N/A'}%
-                            </Typography>
-                          </Box>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-            </CardContent>
-          </DashboardCard>
-        </Grid>
-      </Grid>
+      <TabPanel value={currentTab} index={4}>
+        {/* 설정 탭 */}
+        <StyledCard>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+              <SettingsIcon color="primary" />
+              <Typography variant="h6" component="h2" sx={{ fontWeight: 'bold' }}>
+                테넌시 설정
+              </Typography>
+            </Box>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+              테넌시 구성 및 관리 설정
+            </Typography>
+            <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="h6" color="text.secondary">
+                ⚙️ 설정 컴포넌트 구현 예정
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                환경변수, 볼륨, 네트워크 등 고급 설정
+              </Typography>
+            </Paper>
+          </CardContent>
+        </StyledCard>
+      </TabPanel>
 
-      {/* 삭제 확인 다이얼로그 */}
-      <Dialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-      >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center' }}>
-          <WarningIcon color="error" sx={{ mr: 1 }} />
-          테넌시 삭제 확인
-        </DialogTitle>
+      {/* 스케일링 다이얼로그 */}
+      <Dialog open={scaleDialogOpen} onClose={() => setScaleDialogOpen(false)}>
+        <DialogTitle>서비스 스케일링</DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            정말로 테넌시 '<strong>{tenantId}</strong>'를 삭제하시겠습니까?
-            <br /><br />
-            이 작업은 되돌릴 수 없으며, 모든 관련 리소스가 영구적으로 삭제됩니다.
-          </DialogContentText>
+          <Box sx={{ pt: 2 }}>
+            <Typography variant="body1" gutterBottom>
+              {selectedService?.name} 서비스의 레플리카 수를 조정합니다.
+            </Typography>
+            <TextField
+              fullWidth
+              label="레플리카 수"
+              type="number"
+              value={scaleReplicas}
+              onChange={(e) => setScaleReplicas(Number(e.target.value))}
+              inputProps={{ min: 1, max: 10 }}
+              sx={{ mt: 2 }}
+            />
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>
-            취소
-          </Button>
-          <Button 
-            onClick={handleDeleteTenant} 
-            color="error" 
-            variant="contained"
-            disabled={deleting}
-            startIcon={deleting ? <CircularProgress size={16} /> : <DeleteIcon />}
-          >
-            {deleting ? '삭제 중...' : '삭제'}
-          </Button>
+          <Button onClick={() => setScaleDialogOpen(false)}>취소</Button>
+          <Button onClick={handleScaleApply} variant="contained">적용</Button>
         </DialogActions>
       </Dialog>
 
-      {/* 스낵바 */}
+      {/* 스낵바 알림 */}
       <Snackbar
         open={snackbarOpen}
         autoHideDuration={6000}
@@ -669,3 +833,5 @@ export const TenantDashboard: React.FC<TenantDashboardProps> = ({
     </Box>
   );
 };
+
+export default TenantDashboard;

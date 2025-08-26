@@ -75,7 +75,9 @@ import {
   NetworkCheck as NetworkCheckIcon,
   HealthAndSafety as HealthAndSafetyIcon,
   CheckCircleOutline as CheckCircleOutlineIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
+  Save as SaveIcon,
+  Edit as EditIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
@@ -86,6 +88,7 @@ interface DeploymentWizardProps {
   gpuType: string;
   onDeploymentComplete: (result: any) => void;
   onCancel: () => void;
+  onTenantSaved?: (tenant: any) => void;
 }
 
 interface ValidationResult {
@@ -312,7 +315,8 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
   serviceRequirements,
   gpuType,
   onDeploymentComplete,
-  onCancel
+  onCancel,
+  onTenantSaved
 }) => {
   // 상태 관리
   const [activeStep, setActiveStep] = useState(0);
@@ -321,6 +325,7 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [manifestPreview, setManifestPreview] = useState<ManifestPreview | null>(null);
   const [selectedManifest, setSelectedManifest] = useState<string | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
   
   // [advice from AI] 클라우드 제공업체 선택 상태 추가
   const [selectedCloudProvider, setSelectedCloudProvider] = useState<'iaas' | 'aws' | 'ncp'>('iaas');
@@ -674,6 +679,20 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
       setError(err instanceof Error ? err.message : '배포 실행 실패');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 테넌시 저장 (배포 없이)
+  const handleSaveTenant = () => {
+    if (onTenantSaved) {
+      const savedTenant = {
+        tenant_id: tenantId,
+        status: 'pending',
+        preset: 'auto', // 프리셋은 자동 계산
+        services_count: Object.values(serviceRequirements).filter((v: any) => v > 0).length,
+        created_at: new Date().toISOString()
+      };
+      onTenantSaved(savedTenant);
     }
   };
 
@@ -1896,21 +1915,19 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
                     </Paper>
                   </Grid>
                   
-                  {/* 우측: 미리보기와 수정 영역을 반반으로 분할 */}
+                  {/* 우측: 통합된 미리보기 및 편집 영역 */}
                   <Grid item xs={12} md={8}>
-                    <Box sx={{ height: '500px', display: 'flex', flexDirection: 'column' }}>
-                      {/* 상단: 미리보기 영역 (정확히 절반) */}
-                      <Paper sx={{ 
-                        p: 2, 
-                        backgroundColor: 'grey.50', 
-                        height: '50%',
-                        mb: 1,
-                        display: 'flex',
-                        flexDirection: 'column'
-                      }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <Paper sx={{ 
+                      p: 2, 
+                      backgroundColor: 'grey.50', 
+                      height: '500px',
+                      display: 'flex',
+                      flexDirection: 'column'
+                    }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, justifyContent: 'space-between' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
                           <Typography variant="subtitle1" fontWeight="bold">
-                            📄 매니페스트 내용 미리보기
+                            📝 매니페스트 통합 편집기
                           </Typography>
                           {selectedManifest && (
                             <Chip 
@@ -1922,132 +1939,111 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
                           )}
                         </Box>
                         
-                        {selectedManifest ? (
-                          <Box sx={{ 
-                            flex: 1, 
-                            overflow: 'auto',
-                            backgroundColor: 'white',
-                            border: '1px solid #e0e0e0',
-                            borderRadius: 1,
-                            p: 1
-                          }}>
-                            <ManifestViewer>
-                              {manifestPreview.manifests[selectedManifest]}
-                            </ManifestViewer>
-                          </Box>
-                        ) : (
-                          <Box sx={{ 
-                            flex: 1,
-                            display: 'flex', 
-                            flexDirection: 'column',
-                            alignItems: 'center', 
-                            justifyContent: 'center',
-                            color: 'text.secondary',
-                            backgroundColor: 'white',
-                            border: '1px solid #e0e0e0',
-                            borderRadius: 1
-                          }}>
-                            <VisibilityIcon sx={{ fontSize: 32, color: 'grey.400', mb: 1 }} />
-                            <Typography variant="body2">
-                              왼쪽에서 파일을 선택하여 내용을 확인하세요
-                            </Typography>
+                        {selectedManifest && (
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<EditIcon />}
+                              onClick={() => {
+                                // 편집 모드 토글
+                                setIsEditMode(!isEditMode);
+                              }}
+                            >
+                              {isEditMode ? '읽기 전용' : '편집 모드'}
+                            </Button>
+                            {isEditMode && (
+                              <>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => {
+                                    // 원본으로 되돌리기
+                                    setModifiedManifests(prev => {
+                                      const newState = { ...prev };
+                                      delete newState[selectedManifest];
+                                      return newState;
+                                    });
+                                  }}
+                                >
+                                  원본으로 되돌리기
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  color="warning"
+                                  onClick={() => {
+                                    // 수정 내용 저장
+                                    console.log('수정 내용 저장:', selectedManifest);
+                                  }}
+                                >
+                                  수정 내용 저장
+                                </Button>
+                              </>
+                            )}
                           </Box>
                         )}
-                      </Paper>
+                      </Box>
                       
-                      {/* 하단: 수정 영역 (정확히 절반) */}
-                      <Paper sx={{ 
-                        p: 2, 
-                        backgroundColor: 'warning.50', 
-                        height: '50%',
-                        display: 'flex',
-                        flexDirection: 'column'
-                      }}>
-                        <Typography variant="subtitle1" gutterBottom fontWeight="bold" color="warning.main">
-                          ⚠️ 최종 수정 (선택사항)
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                          이 파일의 내용을 수정하고 싶다면 아래 텍스트를 편집할 수 있습니다.
-                          수정하지 않아도 기본값으로 진행됩니다.
-                        </Typography>
-                        
-                                                 {selectedManifest ? (
-                           <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                             <Box sx={{ flex: 1, overflow: 'hidden', mb: 1 }}>
-                               <TextField
-                                 multiline
-                                 fullWidth
-                                 variant="outlined"
-                                 value={modifiedManifests[selectedManifest] || manifestPreview.manifests[selectedManifest]}
-                                 onChange={(e) => {
-                                   setModifiedManifests(prev => ({
-                                     ...prev,
-                                     [selectedManifest]: e.target.value
-                                   }));
-                                 }}
-                                 sx={{ 
-                                   height: '100%',
-                                   '& .MuiInputBase-root': { 
-                                     fontFamily: 'monospace',
-                                     fontSize: '0.875rem',
-                                     height: '100%'
-                                   },
-                                   '& .MuiInputBase-inputMultiline': {
-                                     height: '100% !important',
-                                     overflow: 'auto'
-                                   }
-                                 }}
-                               />
-                             </Box>
-                             
-                             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-                               <Button
-                                 size="small"
-                                 variant="outlined"
-                                 onClick={() => {
-                                   // 원본으로 되돌리기
-                                   setModifiedManifests(prev => {
-                                     const newState = { ...prev };
-                                     delete newState[selectedManifest];
-                                     return newState;
-                                   });
-                                 }}
-                               >
-                                 원본으로 되돌리기
-                               </Button>
-                               <Button
-                                 size="small"
-                                 variant="contained"
-                                 color="warning"
-                                 onClick={() => {
-                                   // 수정 내용 저장
-                                   console.log('수정 내용 저장:', selectedManifest);
-                                 }}
-                               >
-                                 수정 내용 저장
-                               </Button>
-                             </Box>
-                           </Box>
-                        ) : (
-                          <Box sx={{ 
-                            flex: 1,
-                            display: 'flex', 
-                            flexDirection: 'column',
-                            alignItems: 'center', 
-                            justifyContent: 'center',
-                            color: 'text.secondary',
-                            backgroundColor: 'white',
-                            border: '1px solid #e0e0e0',
-                            borderRadius: 1
-                          }}>
-                            <CodeIcon sx={{ fontSize: 32, color: 'grey.400', mb: 1 }} />
-                            <Typography variant="body2">
-                              파일을 선택하여 수정할 수 있습니다
-                            </Typography>
-                          </Box>
-                        )}
-                      </Paper>
-                    </Box>
+                      {selectedManifest ? (
+                        <Box sx={{ 
+                          flex: 1, 
+                          overflow: 'auto',
+                          backgroundColor: 'white',
+                          border: '1px solid #e0e0e0',
+                          borderRadius: 1,
+                          p: 1
+                        }}>
+                          {isEditMode ? (
+                            <TextField
+                              multiline
+                              fullWidth
+                              variant="outlined"
+                              value={modifiedManifests[selectedManifest] || manifestPreview.manifests[selectedManifest]}
+                              onChange={(e) => {
+                                setModifiedManifests(prev => ({
+                                  ...prev,
+                                  [selectedManifest]: e.target.value
+                                }));
+                              }}
+                              sx={{ 
+                                height: '100%',
+                                '& .MuiInputBase-root': { 
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.875rem',
+                                  height: '100%'
+                                },
+                                '& .MuiInputBase-inputMultiline': {
+                                  height: '100% !important',
+                                  overflow: 'auto'
+                                }
+                              }}
+                            />
+                          ) : (
+                            <ManifestViewer>
+                              {modifiedManifests[selectedManifest] || manifestPreview.manifests[selectedManifest]}
+                            </ManifestViewer>
+                          )}
+                        </Box>
+                      ) : (
+                        <Box sx={{ 
+                          flex: 1,
+                          display: 'flex', 
+                          flexDirection: 'column',
+                          alignItems: 'center', 
+                          justifyContent: 'center',
+                          color: 'text.secondary',
+                          backgroundColor: 'white',
+                          border: '1px solid #e0e0e0',
+                          borderRadius: 1
+                        }}>
+                          <EditIcon sx={{ fontSize: 32, color: 'grey.400', mb: 1 }} />
+                          <Typography variant="body2">
+                            왼쪽에서 파일을 선택하여 내용을 확인하고 편집하세요
+                          </Typography>
+                        </Box>
+                      )}
+                    </Paper>
                   </Grid>
                 </Grid>
                 
@@ -2182,7 +2178,7 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
                   </Typography>
                   
                   <Grid container spacing={3}>
-                    <Grid item xs={12} md={6}>
+                    <Grid item xs={12} md={4}>
                       <Paper sx={{ p: 3, textAlign: 'center', backgroundColor: 'success.50' }}>
                         <DownloadIcon sx={{ fontSize: 48, color: 'success.main', mb: 2 }} />
                         <Typography variant="h6" gutterBottom>
@@ -2207,7 +2203,30 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
                       </Paper>
                     </Grid>
                     
-                    <Grid item xs={12} md={6}>
+                    <Grid item xs={12} md={4}>
+                      <Paper sx={{ p: 3, textAlign: 'center', backgroundColor: 'warning.50' }}>
+                        <SaveIcon sx={{ fontSize: 48, color: 'warning.main', mb: 2 }} />
+                        <Typography variant="h6" gutterBottom>
+                          💾 테넌시 저장
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          테넌시 설정을 저장하여 나중에 배포할 수 있습니다.
+                          매니페스트는 생성되지만 클러스터에는 배포되지 않습니다.
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          color="warning"
+                          startIcon={<SaveIcon />}
+                          onClick={handleSaveTenant}
+                          fullWidth
+                          size="large"
+                        >
+                          테넌시 저장하기
+                        </Button>
+                      </Paper>
+                    </Grid>
+                    
+                    <Grid item xs={12} md={4}>
                       <Paper sx={{ p: 3, textAlign: 'center', backgroundColor: 'info.50' }}>
                         <PlayArrowIcon sx={{ fontSize: 48, color: 'info.main', mb: 2 }} />
                         <Typography variant="h6" gutterBottom>

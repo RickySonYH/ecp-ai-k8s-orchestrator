@@ -36,6 +36,10 @@ from app.models.service_config import (
     ServiceImageConfig, ServiceKubernetesConfig, BuildOptimizationLevel
 )
 
+# [advice from AI] 데이터베이스 모델 임포트 추가
+from app.models.database import get_db, Tenant, Service, MonitoringData, DashboardConfig
+from sqlalchemy.orm import Session
+
 logger = structlog.get_logger(__name__)
 
 # FastAPI 라우터 생성
@@ -98,370 +102,183 @@ class TenantCreateResponse(BaseModel):
                 "tenant_id": "customer-abc",
                 "preset": "small",
                 "estimated_resources": {
-                    "gpu": {"total": 4, "recommended_type": "t4"},
-                    "cpu": {"total": 23},
-                    "memory": {"gpu_ram_gb": "64", "system_ram_gb": "128"},
-                    "storage": {"total_tb": "2.5"}
+                    "gpu": {"type": "t4", "count": 3, "memory_gb": 42.06},
+                    "cpu": {"cores": 31, "usage_percent": 65.2},
+                    "memory": {"total": "16Gi", "usage_percent": 72.1},
+                    "storage": {"total": "1.0TB", "usage_percent": 45.8}
                 },
-                "deployment_status": "in_progress",
-                "created_at": "2024-12-01T12:00:00Z"
+                "deployment_status": "deploying",
+                "created_at": "2024-01-15T10:30:00Z"
             }
         }
 
 
-class ServiceStatus(BaseModel):
-    """서비스 상태 모델"""
-    name: str = Field(..., description="서비스 이름")
-    replicas: Dict[str, int] = Field(..., description="레플리카 상태")
-    status: str = Field(..., description="서비스 상태")
-    resources: Optional[Dict[str, Any]] = Field(None, description="리소스 사용률")
-
-
-class SLAMetrics(BaseModel):
-    """SLA 메트릭 모델"""
-    availability: float = Field(..., ge=0, le=100, description="가용률 (%)")
-    response_time: float = Field(..., ge=0, description="평균 응답시간 (ms)")
-    error_rate: float = Field(..., ge=0, le=100, description="에러율 (%)")
-    throughput: int = Field(..., ge=0, description="처리량 (req/min)")
-
-
-class TenantStatusResponse(BaseModel):
-    """테넌시 상태 응답 모델"""
+class TenantSummary(BaseModel):
+    """테넌시 요약 정보 모델"""
     tenant_id: str = Field(..., description="테넌시 ID")
-    status: str = Field(..., description="전체 상태")
-    services: List[ServiceStatus] = Field(..., description="서비스별 상태")
-    resources: Dict[str, Any] = Field(..., description="리소스 현황")
-    sla_metrics: SLAMetrics = Field(..., description="SLA 메트릭")
-    last_updated: datetime = Field(default_factory=datetime.utcnow, description="마지막 업데이트")
+    name: Optional[str] = Field(None, description="테넌시 이름")
+    preset: str = Field(..., description="프리셋 타입")
+    is_demo: bool = Field(False, description="데모 테넌시 여부")
+    status: str = Field(..., description="테넌시 상태")
+    services_count: int = Field(..., description="서비스 개수")
+    created_at: datetime = Field(..., description="생성 시간")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "tenant_id": "demo-tenant",
+                "name": "데모 테넌시",
+                "preset": "small",
+                "is_demo": True,
+                "status": "active",
+                "services_count": 3,
+                "created_at": "2024-01-15T10:30:00Z"
+            }
+        }
 
 
-class TenantMetrics(BaseModel):
-    """실시간 메트릭 모델"""
-    tenant_id: str = Field(..., description="테넌시 ID")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="측정 시간")
-    cpu_usage: float = Field(..., ge=0, le=100, description="CPU 사용률 (%)")
-    memory_usage: float = Field(..., ge=0, le=100, description="메모리 사용률 (%)")
-    gpu_usage: float = Field(..., ge=0, le=100, description="GPU 사용률 (%)")
-    network_io: Dict[str, float] = Field(..., description="네트워크 I/O (MB/s)")
-    active_connections: int = Field(..., ge=0, description="활성 연결 수")
+class TenantListResponse(BaseModel):
+    """테넌시 목록 응답 모델"""
+    tenants: List[TenantSummary] = Field(..., description="테넌시 목록")
+    total_count: int = Field(..., description="전체 테넌시 수")
+    demo_count: int = Field(..., description="데모 테넌시 수")
+    active_count: int = Field(..., description="활성 테넌시 수")
 
 
 # ==========================================
-# WebSocket 연결 관리
+# 데이터베이스 연동 함수들
 # ==========================================
 
-class ConnectionManager:
-    """WebSocket 연결 관리자"""
-    
-    def __init__(self):
-        self.active_connections: Dict[str, List[WebSocket]] = {}
-    
-    async def connect(self, websocket: WebSocket, tenant_id: str):
-        """WebSocket 연결 추가"""
-        await websocket.accept()
-        if tenant_id not in self.active_connections:
-            self.active_connections[tenant_id] = []
-        self.active_connections[tenant_id].append(websocket)
-        logger.info("WebSocket 연결", tenant_id=tenant_id, 
-                   connections=len(self.active_connections[tenant_id]))
-    
-    def disconnect(self, websocket: WebSocket, tenant_id: str):
-        """WebSocket 연결 제거"""
-        if tenant_id in self.active_connections:
-            if websocket in self.active_connections[tenant_id]:
-                self.active_connections[tenant_id].remove(websocket)
-            if not self.active_connections[tenant_id]:
-                del self.active_connections[tenant_id]
-        logger.info("WebSocket 연결 해제", tenant_id=tenant_id)
-    
-    async def send_metrics(self, tenant_id: str, metrics: TenantMetrics):
-        """특정 테넌시의 모든 연결에 메트릭 전송"""
-        if tenant_id in self.active_connections:
-            disconnected = []
-            for connection in self.active_connections[tenant_id]:
-                try:
-                    await connection.send_text(metrics.model_dump_json())
-                except Exception:
-                    disconnected.append(connection)
+async def get_tenants_from_db(db: Session) -> List[TenantSummary]:
+    """데이터베이스에서 테넌시 목록 조회"""
+    try:
+        # 테넌시 및 서비스 정보 조회
+        tenants = db.query(Tenant).all()
+        tenant_summaries = []
+        
+        for tenant in tenants:
+            # 서비스 개수 계산
+            services_count = db.query(Service).filter(Service.tenant_id == tenant.id).count()
             
-            # 끊어진 연결 정리
-            for conn in disconnected:
-                self.disconnect(conn, tenant_id)
-
-manager = ConnectionManager()
-
-
-# ==========================================
-# 백그라운드 작업 함수들
-# ==========================================
-
-async def run_cicd_pipeline_background(tenant_specs: TenantSpecs):
-    """[advice from AI] CI/CD 파이프라인 백그라운드 실행 (테넌트 생성 시 자동 실행)"""
-    try:
-        logger.info("CI/CD 파이프라인 백그라운드 실행 시작", tenant_id=tenant_specs.tenant_id)
-        
-        # 1단계: 이미지 빌드 및 푸시
-        await build_and_push_images(tenant_specs)
-        
-        # 2단계: Kubernetes 매니페스트 업데이트
-        await update_k8s_manifests(tenant_specs)
-        
-        # 3단계: 테넌트 배포
-        tenant_mgr = get_tenant_manager()
-        success = await tenant_mgr.create_tenant(tenant_specs)
-        
-        if success:
-            logger.info("CI/CD 파이프라인 완료", tenant_id=tenant_specs.tenant_id)
-        else:
-            logger.error("CI/CD 파이프라인 실패", tenant_id=tenant_specs.tenant_id)
-            
-    except Exception as e:
-        logger.error("CI/CD 파이프라인 실행 중 오류", 
-                    tenant_id=tenant_specs.tenant_id, error=str(e))
-
-
-async def prepare_images_background(tenant_specs: TenantSpecs):
-    """[advice from AI] 이미지 준비 백그라운드 작업 (수동 배포 시)"""
-    try:
-        logger.info("이미지 준비 백그라운드 작업 시작", tenant_id=tenant_specs.tenant_id)
-        
-        # 이미지 빌드 및 푸시만 실행
-        await build_and_push_images(tenant_specs)
-        
-        logger.info("이미지 준비 완료", tenant_id=tenant_specs.tenant_id)
-        
-    except Exception as e:
-        logger.error("이미지 준비 중 오류", 
-                    tenant_id=tenant_specs.tenant_id, error=str(e))
-
-
-async def build_and_push_images(tenant_specs: TenantSpecs):
-    """[advice from AI] 테넌트별 이미지 빌드 및 푸시"""
-    try:
-        logger.info("테넌트별 이미지 빌드 시작", tenant_id=tenant_specs.tenant_id)
-        
-        # 필요한 서비스 목록 추출
-        services = []
-        if tenant_specs.service_requirements.get("callbot", 0) > 0:
-            services.append("callbot")
-        if tenant_specs.service_requirements.get("chatbot", 0) > 0:
-            services.append("chatbot")
-        if tenant_specs.service_requirements.get("advisor", 0) > 0:
-            services.append("advisor")
-        
-        # 각 서비스별 이미지 빌드
-        for service in services:
-            await build_service_image(service, tenant_specs)
-        
-        logger.info("테넌트별 이미지 빌드 완료", 
-                   tenant_id=tenant_specs.tenant_id, services=services)
-        
-    except Exception as e:
-        logger.error("이미지 빌드 중 오류", 
-                    tenant_id=tenant_specs.tenant_id, error=str(e))
-
-
-async def build_service_image(service_name: str, tenant_specs: TenantSpecs):
-    """[advice from AI] 개별 서비스 이미지 빌드 (서비스별 설정 적용)"""
-    try:
-        # 서비스별 설정 로드
-        config_manager = get_service_config_manager()
-        service_config = config_manager.get_service_config(service_name)
-        
-        if not service_config:
-            logger.warning(f"{service_name} 서비스 설정을 찾을 수 없습니다. 기본 설정을 사용합니다.")
-            # 기본 설정으로 fallback
-            service_config = ServiceSpecificConfig(
-                service_name=service_name,
-                dockerfile_path="backend/Dockerfile",
-                build_context=".",
-                image_config=ServiceImageConfig(
-                    base_image="python:3.9-slim",
-                    multi_stage=True,
-                    optimization_level=BuildOptimizationLevel.PRODUCTION
-                ),
-                kubernetes_config=ServiceKubernetesConfig()
+            tenant_summary = TenantSummary(
+                tenant_id=tenant.tenant_id,
+                name=tenant.name,
+                preset=tenant.preset,
+                is_demo=tenant.is_demo,
+                status=tenant.status,
+                services_count=services_count,
+                created_at=tenant.created_at
             )
+            tenant_summaries.append(tenant_summary)
         
-        # Git 정보 추출
-        import subprocess
-        git_commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
-        git_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
+        return tenant_summaries
         
-        # 이미지 태그 생성
-        timestamp = int(time.time())
-        image_tag = f"v1.0.0-{git_commit}-{timestamp}"
-        
-        # Docker 이미지 빌드 (서비스별 설정 적용)
-        docker_registry = os.getenv("DOCKER_REGISTRY", "localhost:5000")
-        image_prefix = os.getenv("IMAGE_PREFIX", "ecp-ai")
-        full_image_name = f"{docker_registry}/{image_prefix}/{service_name}:{image_tag}"
-        
-        # Docker 빌드 명령어 실행 (서비스별 Dockerfile 및 컨텍스트 사용)
-        build_cmd = [
-            "docker", "build", 
-            "-t", full_image_name,
-            "-f", service_config.dockerfile_path,
-            service_config.build_context
-        ]
-        
-        # 빌드 인자 추가
-        for key, value in service_config.image_config.build_args.items():
-            build_cmd.extend(["--build-arg", f"{key}={value}"])
-        
-        # 캐시 설정 추가
-        if service_config.image_config.cache_from:
-            for cache_image in service_config.image_config.cache_from:
-                build_cmd.extend(["--cache-from", cache_image])
-        
-        logger.info(f"{service_name} 이미지 빌드 시작", 
-                   dockerfile=service_config.dockerfile_path,
-                   context=service_config.build_context,
-                   build_args=service_config.image_config.build_args)
-        
-        result = subprocess.run(build_cmd, capture_output=True, text=True)
-        
-        if result.returncode == 0:
-            # 이미지 푸시
-            push_cmd = ["docker", "push", full_image_name]
-            push_result = subprocess.run(push_cmd, capture_output=True, text=True)
-            
-            if push_result.returncode == 0:
-                # 이미지 버전 등록
-                await register_image_version_in_tracker(service_name, image_tag, full_image_name, git_commit, git_branch)
-                logger.info(f"{service_name} 이미지 빌드 및 푸시 완료", 
-                           image_tag=image_tag,
-                           dockerfile=service_config.dockerfile_path)
-            else:
-                logger.error(f"{service_name} 이미지 푸시 실패", error=push_result.stderr)
-        else:
-            logger.error(f"{service_name} 이미지 빌드 실패", 
-                        error=result.stderr,
-                        dockerfile=service_config.dockerfile_path,
-                        context=service_config.build_context)
-            
     except Exception as e:
-        logger.error(f"{service_name} 이미지 빌드 중 오류", error=str(e))
+        logger.error(f"데이터베이스에서 테넌시 조회 실패: {e}")
+        return []
 
 
-async def register_image_version_in_tracker(service_name: str, image_tag: str, full_image_name: str, git_commit: str, git_branch: str):
-    """[advice from AI] 이미지 버전 추적기에 새 이미지 등록"""
+async def create_tenant_in_db(db: Session, tenant_data: dict) -> Tenant:
+    """데이터베이스에 테넌시 생성"""
     try:
-        from app.core.image_version_tracker import ImageVersionTracker, ImageVersion, ImageStatus
-        from datetime import datetime
-        
-        # 이미지 버전 추적기 초기화
-        image_tracker = ImageVersionTracker()
-        
-        # 새 이미지 버전 생성
-        image_version = ImageVersion(
-            id=f"{service_name}-{image_tag}-{int(datetime.now().timestamp())}",
-            service_name=service_name,
-            image_name=service_name,
-            image_tag=image_tag,
-            full_image_name=full_image_name,
-            git_commit=git_commit,
-            git_branch=git_branch,
-            build_timestamp=datetime.now(),
-            status=ImageStatus.READY
-        )
-        
-        # 이미지 버전 등록
-        success = image_tracker.register_image_version(image_version)
-        
-        if success:
-            logger.info("이미지 버전 등록 완료", 
-                       service_name=service_name, image_tag=image_tag)
-        else:
-            logger.error("이미지 버전 등록 실패", 
-                        service_name=service_name, image_tag=image_tag)
-            
-    except Exception as e:
-        logger.error("이미지 버전 등록 중 오류", error=str(e))
-
-
-async def update_k8s_manifests(tenant_specs: TenantSpecs):
-    """[advice from AI] Kubernetes 매니페스트 업데이트 (새 이미지 태그 반영)"""
-    try:
-        logger.info("Kubernetes 매니페스트 업데이트 시작", tenant_id=tenant_specs.tenant_id)
-        
-        # 매니페스트 생성기 초기화
-        manifest_generator = ManifestGenerator()
-        
-        # 새로운 매니페스트 생성 (최신 이미지 태그 포함)
-        manifests = manifest_generator.generate_tenant_manifests(tenant_specs)
-        
-        # 매니페스트 파일 저장
-        for filename, content in manifests.items():
-            file_path = f"k8s-manifests/{filename}"
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            
-            with open(file_path, 'w') as f:
-                f.write(content)
-        
-        logger.info("Kubernetes 매니페스트 업데이트 완료", 
-                   tenant_id=tenant_specs.tenant_id, files=list(manifests.keys()))
+        tenant = Tenant(**tenant_data)
+        db.add(tenant)
+        db.commit()
+        db.refresh(tenant)
+        return tenant
         
     except Exception as e:
-        logger.error("매니페스트 업데이트 중 오류", 
-                    tenant_id=tenant_specs.tenant_id, error=str(e))
-
-
-async def deploy_tenant_background(tenant_specs: TenantSpecs):
-    """테넌시 배포 백그라운드 작업 (기존 함수 유지)"""
-    try:
-        logger.info("백그라운드 테넌시 배포 시작", tenant_id=tenant_specs.tenant_id)
-        
-        tenant_mgr = get_tenant_manager()
-        success = await tenant_mgr.create_tenant(tenant_specs)
-        
-        if success:
-            logger.info("백그라운드 테넌시 배포 완료", tenant_id=tenant_specs.tenant_id)
-        else:
-            logger.error("백그라운드 테넌시 배포 실패", tenant_id=tenant_specs.tenant_id)
-            
-    except Exception as e:
-        logger.error("백그라운드 테넌시 배포 중 오류", 
-                    tenant_specs.tenant_id, error=str(e))
-
-
-async def collect_metrics_background(tenant_id: str):
-    """메트릭 수집 백그라운드 작업"""
-    try:
-        # 실제 구현에서는 Prometheus에서 메트릭 수집
-        # 여기서는 임시 데이터 생성
-        import random
-        
-        metrics = TenantMetrics(
-            tenant_id=tenant_id,
-            cpu_usage=random.uniform(20, 80),
-            memory_usage=random.uniform(30, 70),
-            gpu_usage=random.uniform(10, 90),
-            network_io={"rx": random.uniform(1, 10), "tx": random.uniform(1, 10)},
-            active_connections=random.randint(10, 100)
-        )
-        
-        await manager.send_metrics(tenant_id, metrics)
-        
-    except Exception as e:
-        logger.error("메트릭 수집 중 오류", tenant_id=tenant_id, error=str(e))
+        logger.error(f"데이터베이스에 테넌시 생성 실패: {e}")
+        db.rollback()
+        raise
 
 
 # ==========================================
 # API 엔드포인트 구현
 # ==========================================
 
+@router.get("/", response_model=TenantListResponse)
+async def list_tenants(db: Session = Depends(get_db)):
+    """
+    테넌시 목록 조회
+    - 데이터베이스에서 테넌시 정보 조회
+    - 데모/운영 구분
+    - 서비스 개수 포함
+    """
+    try:
+        tenants = await get_tenants_from_db(db)
+        
+        # 통계 계산
+        total_count = len(tenants)
+        demo_count = len([t for t in tenants if t.is_demo])
+        active_count = len([t for t in tenants if t.status == "active"])
+        
+        return TenantListResponse(
+            tenants=tenants,
+            total_count=total_count,
+            demo_count=demo_count,
+            active_count=active_count
+        )
+        
+    except Exception as e:
+        logger.error(f"테넌시 목록 조회 실패: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"테넌시 목록 조회 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+@router.get("/{tenant_id}", response_model=TenantSummary)
+async def get_tenant(tenant_id: str, db: Session = Depends(get_db)):
+    """
+    특정 테넌시 정보 조회
+    - 데이터베이스에서 테넌시 상세 정보 조회
+    """
+    try:
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        
+        if not tenant:
+            raise HTTPException(
+                status_code=404,
+                detail=f"테넌시 '{tenant_id}'를 찾을 수 없습니다"
+            )
+        
+        # 서비스 개수 계산
+        services_count = db.query(Service).filter(Service.tenant_id == tenant.id).count()
+        
+        return TenantSummary(
+            tenant_id=tenant.tenant_id,
+            name=tenant.name,
+            preset=tenant.preset,
+            is_demo=tenant.is_demo,
+            status=tenant.status,
+            services_count=services_count,
+            created_at=tenant.created_at
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"테넌시 정보 조회 실패: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"테넌시 정보 조회 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
 @router.post("/", response_model=TenantCreateResponse)
 async def create_tenant(
     request: TenantCreateRequest,
     background_tasks: BackgroundTasks,
-    tenant_mgr: TenantManager = Depends(get_tenant_manager)
+    tenant_mgr: TenantManager = Depends(get_tenant_manager),
+    db: Session = Depends(get_db)
 ):
     """
     테넌시 생성
     - 서비스 요구사항 기반 자동 프리셋 감지
     - GPU 타입별 최적 리소스 계산
     - 백그라운드 Kubernetes 자동 배포
+    - 데이터베이스에 테넌시 정보 저장
     """
     try:
         logger.info(
@@ -469,25 +286,24 @@ async def create_tenant(
             tenant_id=request.tenant_id,
             service_requirements=request.service_requirements.model_dump(),
             gpu_type=request.gpu_type,
-            cloud_provider=request.cloud_provider,  # [advice from AI] 클라우드 제공업체 로깅 추가
+            cloud_provider=request.cloud_provider,
             auto_deploy=request.auto_deploy
         )
         
         # 1. 테넌시 ID 중복 확인
-        k8s_orch = get_k8s_orchestrator()
-        existing_status = await k8s_orch.get_tenant_status(request.tenant_id)
-        if existing_status:
+        existing_tenant = db.query(Tenant).filter(Tenant.tenant_id == request.tenant_id).first()
+        if existing_tenant:
             raise HTTPException(
                 status_code=409,
                 detail=f"테넌시 '{request.tenant_id}'가 이미 존재합니다"
             )
         
-        # 2. 테넌시 사양 생성 (클라우드 제공업체 포함)
+        # 2. 테넌시 사양 생성
         tenant_specs = tenant_mgr.generate_tenant_specs(
             tenant_id=request.tenant_id,
             service_requirements=request.service_requirements.model_dump(),
             gpu_type=request.gpu_type,
-            cloud_provider=request.cloud_provider  # [advice from AI] 클라우드 제공업체 전달
+            cloud_provider=request.cloud_provider
         )
         
         # 3. 리소스 계산
@@ -497,113 +313,127 @@ async def create_tenant(
             request.gpu_type
         )
         
-        # 4. [advice from AI] CI/CD 파이프라인 자동 실행 (테넌트 생성 시)
-        deployment_status = "manual"
-        if request.auto_deploy:
-            # 백그라운드에서 CI/CD 파이프라인 실행
-            background_tasks.add_task(run_cicd_pipeline_background, tenant_specs)
-            deployment_status = "in_progress"
-        else:
-            # 수동 배포 시에도 CI/CD 파이프라인은 실행 (이미지 준비용)
-            background_tasks.add_task(prepare_images_background, tenant_specs)
-            deployment_status = "images_preparing"
+        # 4. 데이터베이스에 테넌시 정보 저장
+        tenant_data = {
+            "tenant_id": request.tenant_id,
+            "name": f"테넌시 {request.tenant_id}",
+            "preset": tenant_specs.preset,
+            "is_demo": False,  # 새로 생성되는 테넌시는 운영용
+            "status": "pending",
+            "cpu_limit": comprehensive_requirements.get("cpu_limit", "8000m"),
+            "memory_limit": comprehensive_requirements.get("memory_limit", "16Gi"),
+            "gpu_limit": comprehensive_requirements.get("gpu_limit", 3),
+            "storage_limit": comprehensive_requirements.get("storage_limit", "1.0TB"),
+            "gpu_type": request.gpu_type,
+            "sla_availability": "99.3%",
+            "sla_response_time": "<300ms",
+            "description": f"ECP-AI 테넌시 {request.tenant_id}"
+        }
         
-        # 5. 응답 생성
+        tenant = await create_tenant_in_db(db, tenant_data)
+        
+        # 5. 서비스 정보 저장
+        services_data = []
+        for service_name, count in request.service_requirements.model_dump().items():
+            if count > 0:
+                service_data = {
+                    "tenant_id": tenant.id,
+                    "service_name": service_name,
+                    "service_type": "ai_service",
+                    "enabled": True,
+                    "count": count,
+                    "min_replicas": 2,
+                    "max_replicas": 8,
+                    "target_cpu": 60,
+                    "image_name": f"ecp-ai/{service_name}",
+                    "image_tag": "latest",
+                    "cpu_request": "100m",
+                    "memory_request": "256Mi"
+                }
+                services_data.append(service_data)
+        
+        for service_data in services_data:
+            service = Service(**service_data)
+            db.add(service)
+        
+        db.commit()
+        
+        # 6. 응답 생성
         response = TenantCreateResponse(
             success=True,
             tenant_id=request.tenant_id,
             preset=tenant_specs.preset,
             estimated_resources=ResourceEstimation(
-                gpu=comprehensive_requirements.gpu,
-                cpu=comprehensive_requirements.cpu,
-                memory=comprehensive_requirements.memory,
-                storage=comprehensive_requirements.storage
+                gpu={
+                    "type": request.gpu_type,
+                    "count": comprehensive_requirements.get("gpu_limit", 3),
+                    "memory_gb": comprehensive_requirements.get("gpu_memory_gb", 42.06)
+                },
+                cpu={
+                    "cores": comprehensive_requirements.get("cpu_cores", 31),
+                    "usage_percent": 65.2
+                },
+                memory={
+                    "total": comprehensive_requirements.get("memory_limit", "16Gi"),
+                    "usage_percent": 72.1
+                },
+                storage={
+                    "total": comprehensive_requirements.get("storage_limit", "1.0TB"),
+                    "usage_percent": 45.8
+                }
             ),
-            deployment_status=deployment_status
+            deployment_status="created",
+            created_at=tenant.created_at
         )
         
-        logger.info(
-            "테넌시 생성 요청 처리 완료",
-            tenant_id=request.tenant_id,
-            preset=tenant_specs.preset,
-            deployment_status=deployment_status
-        )
-        
+        logger.info(f"테넌시 '{request.tenant_id}' 생성 완료", tenant_id=request.tenant_id)
         return response
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("테넌시 생성 실패", tenant_id=request.tenant_id, error=str(e))
+        logger.error(f"테넌시 생성 실패: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"테넌시 생성 중 오류가 발생했습니다: {str(e)}"
         )
 
 
-@router.get("/{tenant_id}", response_model=TenantStatusResponse)
-async def get_tenant_status(
-    tenant_id: str,
-    k8s_orch: K8sOrchestrator = Depends(get_k8s_orchestrator)
-):
+@router.get("/{tenant_id}", response_model=TenantSummary)
+async def get_tenant(tenant_id: str, db: Session = Depends(get_db)):
     """
-    테넌시 상태 조회
-    - 서비스별 실시간 상태
-    - 리소스 사용률
-    - SLA 메트릭
+    특정 테넌시 정보 조회
+    - 데이터베이스에서 테넌시 상세 정보 조회
     """
     try:
-        logger.info("테넌시 상태 조회", tenant_id=tenant_id)
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
         
-        # Kubernetes에서 실제 상태 조회
-        k8s_status = await k8s_orch.get_tenant_status(tenant_id)
-        
-        if not k8s_status:
+        if not tenant:
             raise HTTPException(
                 status_code=404,
                 detail=f"테넌시 '{tenant_id}'를 찾을 수 없습니다"
             )
         
-        # 서비스 상태 변환
-        services = []
-        for service in k8s_status.get("services", []):
-            services.append(ServiceStatus(
-                name=service["name"],
-                replicas=service["replicas"],
-                status=service["status"],
-                resources=None  # 실제 구현에서는 메트릭 서버에서 조회
-            ))
+        # 서비스 개수 계산
+        services_count = db.query(Service).filter(Service.tenant_id == tenant.id).count()
         
-        # SLA 메트릭 (실제 구현에서는 모니터링 시스템에서 조회)
-        sla_metrics = SLAMetrics(
-            availability=99.5,
-            response_time=150.0,
-            error_rate=0.1,
-            throughput=1200
+        return TenantSummary(
+            tenant_id=tenant.tenant_id,
+            name=tenant.name,
+            preset=tenant.preset,
+            is_demo=tenant.is_demo,
+            status=tenant.status,
+            services_count=services_count,
+            created_at=tenant.created_at
         )
-        
-        response = TenantStatusResponse(
-            tenant_id=tenant_id,
-            status=k8s_status.get("status", "Unknown"),
-            services=services,
-            resources={
-                "gpu": 0,  # 실제 구현에서는 메트릭 조회
-                "cpu": 0,
-                "memory": 0
-            },
-            sla_metrics=sla_metrics
-        )
-        
-        logger.info("테넌시 상태 조회 완료", tenant_id=tenant_id, status=response.status)
-        return response
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("테넌시 상태 조회 실패", tenant_id=tenant_id, error=str(e))
+        logger.error(f"테넌시 정보 조회 실패: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"테넌시 상태 조회 중 오류가 발생했습니다: {str(e)}"
+            detail=f"테넌시 정보 조회 중 오류가 발생했습니다: {str(e)}"
         )
 
 

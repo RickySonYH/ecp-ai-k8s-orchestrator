@@ -30,7 +30,8 @@ import {
   IconButton,
   Collapse,
   Dialog,
-  CircularProgress
+  CircularProgress,
+  Snackbar
 } from '@mui/material';
 import {
   InfoOutlined as InfoIcon,
@@ -68,6 +69,15 @@ interface ResourceEstimation {
 
 interface TenantCreatorProps {
   onTenantCreated: (result: any) => void;
+  onTenantSaved?: (tenant: TenantSummary) => void;
+}
+
+interface TenantSummary {
+  tenant_id: string;
+  status: string;
+  preset: string;
+  services_count: number;
+  created_at: string;
 }
 
 // 스타일드 컴포넌트
@@ -90,7 +100,7 @@ const MetricChip = styled(Chip)(({ theme }) => ({
   fontWeight: 'bold',
 }));
 
-export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated }) => {
+export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, onTenantSaved }) => {
   // 상태 관리
   const [tenantId, setTenantId] = useState('');
   const [gpuType, setGpuType] = useState<'auto' | 't4' | 'v100' | 'l40s'>('auto');
@@ -110,6 +120,10 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
   const [showCalculation, setShowCalculation] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const [showHardwareSpec, setShowHardwareSpec] = useState(false);
+  
+  // [advice from AI] 저장 관련 상태 추가
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
   // [advice from AI] 클라우드 비교 기능 제거 - 매니페스트 생성 후에 선택하도록 변경
 
   // 서비스별 설정 (실제 가중치 반영)
@@ -302,7 +316,53 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
 
   // [advice from AI] 클라우드 비교 useEffect 제거 - 더 이상 필요하지 않음
 
-  // 테넌시 생성 핸들러
+  // [advice from AI] 테넌시 저장 핸들러 (배포 없이 저장만)
+  const handleSave = () => {
+    if (!tenantId.trim()) {
+      setError('테넌시 ID를 입력해주세요.');
+      return;
+    }
+
+    // 테넌시 ID 검증
+    const tenantIdRegex = /^[a-z0-9-]+$/;
+    if (!tenantIdRegex.test(tenantId)) {
+      setError('테넌시 ID는 소문자, 숫자, 하이픈만 사용 가능합니다.');
+      return;
+    }
+
+    // 저장할 테넌시 정보 생성
+    const savedTenant: TenantSummary = {
+      tenant_id: tenantId.toLowerCase(),
+      status: 'pending',
+      preset: resourceEstimation.preset,
+      services_count: Object.values(services).filter((v: any) => v > 0).length,
+      created_at: new Date().toISOString()
+    };
+
+    // 부모 컴포넌트에 저장된 테넌시 전달
+    if (onTenantSaved) {
+      onTenantSaved(savedTenant);
+    }
+
+    // 성공 메시지 표시
+    setSnackbarMessage(`테넌시 '${tenantId}' 저장 완료!`);
+    setSnackbarOpen(true);
+    
+    // 폼 리셋
+    setTenantId('');
+    setServices({
+      callbot: 0,
+      chatbot: 0,
+      advisor: 0,
+      stt: 0,
+      tts: 0,
+      ta: 0,
+      qa: 0
+    });
+    setGpuType('auto');
+  };
+
+  // 테넌시 생성 핸들러 (실시간 배포)
   const handleSubmit = async () => {
     if (!tenantId.trim()) {
       setError('테넌시 ID를 입력해주세요.');
@@ -329,7 +389,6 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
           tenant_id: tenantId.toLowerCase(),
           service_requirements: services,
           gpu_type: gpuType,
-          // [advice from AI] 클라우드 제공업체는 매니페스트 생성 시에 선택
           auto_deploy: true
         }),
       });
@@ -354,7 +413,6 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
         qa: 0
       });
       setGpuType('auto');
-      setCloudProvider('iaas');  // [advice from AI] 클라우드 제공업체도 초기화
 
     } catch (err) {
       setError(err instanceof Error ? err.message : '테넌시 생성 실패');
@@ -646,31 +704,33 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
 
 
 
-          {/* 생성 버튼 */}
+          {/* 생성 버튼들 */}
           <Box sx={{ mt: 4, textAlign: 'center' }}>
-            <Button
-              variant="contained"
-              size="large"
-              onClick={() => setShowWizard(true)}
-              disabled={!tenantId.trim() || Object.values(services).every(v => v === 0)}
-              startIcon={<RocketIcon />}
-              sx={{ 
-                px: 6, 
-                py: 2, 
-                fontSize: '1.2rem',
-                borderRadius: 3,
-                background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
-                boxShadow: '0 3px 5px 2px rgba(33, 203, 243, .3)',
-                '&:hover': {
-                  background: 'linear-gradient(45deg, #1976D2 30%, #21CBF3 90%)',
-                }
-              }}
-            >
-              🚀 테넌시 생성하기
-            </Button>
+            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+              <Button
+                variant="contained"
+                size="large"
+                onClick={() => setShowWizard(true)}
+                disabled={!tenantId.trim() || Object.values(services).every(v => v === 0)}
+                startIcon={<RocketIcon />}
+                sx={{ 
+                  px: 6, 
+                  py: 2, 
+                  fontSize: '1.2rem',
+                  borderRadius: 3,
+                  background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+                  boxShadow: '0 3px 5px 2px rgba(33, 203, 243, .3)',
+                  '&:hover': {
+                    background: 'linear-gradient(45deg, #1976D2 30%, #21CBF3 90%)',
+                  }
+                }}
+              >
+                🚀 배포 마법사 시작
+              </Button>
+            </Box>
             
             <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-              위 설정을 기반으로 Kubernetes 환경을 자동으로 구성합니다
+              🚀 <strong>배포 마법사</strong>: 단계별 검증을 통한 안전한 배포 (테넌시 설정 저장은 마법사 마지막 단계에서 가능)
             </Typography>
           </Box>
 
@@ -723,8 +783,22 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated })
             onTenantCreated(result);
           }}
           onCancel={() => setShowWizard(false)}
+          onTenantSaved={(tenant) => {
+            setShowWizard(false);
+            if (onTenantSaved) {
+              onTenantSaved(tenant);
+            }
+          }}
         />
       </Dialog>
+      
+      {/* 스낵바 알림 */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={() => setSnackbarOpen(false)}
+        message={snackbarMessage}
+      />
     </StyledCard>
   );
 };
