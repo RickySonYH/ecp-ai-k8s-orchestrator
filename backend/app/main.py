@@ -22,10 +22,17 @@ import structlog
 from app.api.v1.tenants import router as tenants_router
 from app.api.v1.images import router as images_router
 from app.api.v1.image_management import router as image_management_router
-# from app.core.tenant_manager import TenantManager
-# from app.core.resource_calculator import ResourceCalculator  
-# from app.core.k8s_orchestrator import K8sOrchestrator
-# from app.core.database import engine, create_tables
+from app.api.v1.demo import router as demo_router
+from app.api.v1.realtime_monitoring import router as realtime_monitoring_router
+from app.core.tenant_manager import TenantManager
+from app.core.resource_calculator import ResourceCalculator  
+from app.core.k8s_orchestrator import K8sOrchestrator
+from app.models.database import create_tables
+from app.models.demo_database import init_demo_database
+
+# [advice from AI] 개발 모드에서도 데이터베이스 테이블 생성 보장
+create_tables()
+init_demo_database()
 
 # 프로메테우스 메트릭 정의
 TENANT_OPERATIONS = Counter(
@@ -72,7 +79,7 @@ async def lifespan(app: FastAPI):
     logger.info("ECP-AI Kubernetes Orchestrator 시작")
     
     # 데이터베이스 테이블 생성
-    # await create_tables()
+    create_tables()
     
     # Kubernetes 클러스터 연결 확인
     # k8s_orchestrator = K8sOrchestrator()
@@ -119,6 +126,8 @@ app.add_middleware(
 app.include_router(tenants_router, prefix="/api/v1")
 app.include_router(images_router, prefix="/api/v1")
 app.include_router(image_management_router, prefix="/api/v1")
+app.include_router(demo_router, prefix="/api/v1/demo")
+app.include_router(realtime_monitoring_router, prefix="/api/v1")
 
 
 # 헬스 체크 엔드포인트

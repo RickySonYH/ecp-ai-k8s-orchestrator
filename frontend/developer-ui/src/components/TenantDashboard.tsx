@@ -88,6 +88,18 @@ interface TenantInfo {
   cpuCount: number;
   memoryGB: number;
   services: string[];
+  // [advice from AI] 채널 기반 서비스 요구사항 추가
+  service_requirements?: {
+    callbot?: number;
+    chatbot?: number;
+    advisor?: number;
+    stt?: number;
+    tts?: number;
+    ta?: number;
+    qa?: number;
+  };
+  total_channels?: number;
+  total_services?: number;
   createdAt: string;
   owner: string;
   description: string;
@@ -238,7 +250,7 @@ const presetRules = {
   }
 };
 
-// 데모 데이터
+// [advice from AI] 데모 데이터 - 채널 기반 서비스 요구사항 포함
 const demoTenantData = {
   tenant: {
     id: 'test-download',
@@ -249,6 +261,18 @@ const demoTenantData = {
     cpuCount: 31,
     memoryGB: 16,
     services: ['callbot', 'chatbot', 'advisor'],
+    // [advice from AI] 채널 기반 서비스 요구사항
+    service_requirements: {
+      callbot: 15,      // 15채널
+      chatbot: 75,      // 75채널
+      advisor: 12,      // 12채널
+      stt: 2,           // 2개 인스턴스
+      tts: 2,           // 2개 인스턴스
+      ta: 1,            // 1개 인스턴스
+      qa: 1             // 1개 인스턴스
+    },
+    total_channels: 102,    // 총 102채널
+    total_services: 6,      // 총 6개 서비스 인스턴스
     createdAt: '2024-01-15T10:30:00Z',
     owner: 'admin',
     description: '콜센터 및 챗봇 서비스 테스트 환경'
@@ -411,10 +435,47 @@ export const TenantDashboard: React.FC<{ tenantId: string; onTenantDeleted: (ten
     }
   };
 
-  // 테넌시 삭제
-  const handleDeleteTenant = () => {
+  // [advice from AI] 데모 모드 감지
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  
+  // 컴포넌트 마운트 시 데모 모드 확인
+  useEffect(() => {
+    const demoMode = localStorage.getItem('ecp-ai-demo-mode');
+    setIsDemoMode(demoMode === 'true');
+  }, []);
+
+  // 테넌시 삭제 - 실제 API 호출
+  const handleDeleteTenant = async () => {
     if (window.confirm('정말로 이 테넌시를 삭제하시겠습니까?')) {
-      onTenantDeleted(tenantId);
+      try {
+        // [advice from AI] 데모 모드에 따라 적절한 삭제 API 호출
+        const apiUrl = isDemoMode 
+          ? `http://localhost:8001/api/v1/demo/tenants/${tenantId}/`
+          : `http://localhost:8001/api/v1/tenants/${tenantId}/`;
+        
+        console.log('TenantDashboard - 삭제 API 호출:', apiUrl, '데모 모드:', isDemoMode);
+        
+        const response = await fetch(apiUrl, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.detail || '테넌시 삭제에 실패했습니다.');
+        }
+
+        console.log('테넌시 삭제 성공:', tenantId);
+        
+        // 삭제 성공 후 콜백 호출
+        onTenantDeleted(tenantId);
+        
+      } catch (error) {
+        console.error('테넌시 삭제 실패:', error);
+        alert(`테넌시 삭제 실패: ${error.message}`);
+      }
     }
   };
 
@@ -644,68 +705,262 @@ export const TenantDashboard: React.FC<{ tenantId: string; onTenantDeleted: (ten
       </TabPanel>
 
       <TabPanel value={currentTab} index={1}>
-        {/* 서비스 탭 */}
-        <StyledCard>
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-              <TimelineIcon color="primary" />
-              <Typography variant="h6" component="h2" sx={{ fontWeight: 'bold' }}>
-                서비스 인스턴스 현황
-              </Typography>
-            </Box>
-            <Grid container spacing={2}>
-              {data.services.map((service) => (
-                <Grid item xs={12} md={6} key={service.name}>
-                  <Paper 
-                    sx={{ 
-                      p: 2, 
-                      background: theme.palette.mode === 'dark' 
-                        ? alpha(theme.palette.background.paper, 0.8) 
-                        : alpha(theme.palette.background.paper, 0.9),
-                      border: `1px solid ${alpha(theme.palette.divider, 0.2)}`
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <ServiceIcon theme={theme} color={service.color}>
-                          {service.icon}
-                        </ServiceIcon>
-                        <Box>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                            {service.name}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            포트: {service.port} • 레플리카: {service.replicas}/{service.targetReplicas}
-                          </Typography>
+        {/* [advice from AI] 채널 기반 서비스 요구사항 탭 */}
+        <Grid container spacing={3}>
+          {/* 채널 서비스 섹션 */}
+          <Grid item xs={12} md={6}>
+            <StyledCard>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+                  <CallIcon color="primary" />
+                  <Typography variant="h6" component="h2" sx={{ fontWeight: 'bold' }}>
+                    채널 서비스 현황
+                  </Typography>
+                </Box>
+                <Grid container spacing={2}>
+                  {/* 콜봇 */}
+                  <Grid item xs={12}>
+                    <Paper sx={{ p: 2, background: alpha(theme.palette.primary.main, 0.1) }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <CallIcon color="primary" />
+                          <Box>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                              콜봇 서비스
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              음성 통화 기반 AI 상담
+                            </Typography>
+                          </Box>
                         </Box>
+                        <Chip 
+                          label={`${data.service_requirements?.callbot || 0}채널`} 
+                          color="primary" 
+                          variant="filled"
+                        />
                       </Box>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <ServiceStatusIcon status={service.status} />
-                        <IconButton
-                          size="small"
-                          onClick={() => handleScaleService(service)}
-                          color="primary"
-                        >
-                          <ScaleIcon />
-                        </IconButton>
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          상태: {data.service_requirements?.callbot > 0 ? '활성' : '비활성'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          매니페스트: {data.service_requirements?.callbot > 0 ? '생성됨' : '없음'}
+                        </Typography>
                       </Box>
-                    </Box>
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        활성 인스턴스: {service.count}개
-                      </Typography>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={(service.replicas / service.targetReplicas) * 100} 
-                        sx={{ mt: 1, height: 4, borderRadius: 2 }}
-                      />
-                    </Box>
-                  </Paper>
+                    </Paper>
+                  </Grid>
+                  
+                  {/* 챗봇 */}
+                  <Grid item xs={12}>
+                    <Paper sx={{ p: 2, background: alpha(theme.palette.success.main, 0.1) }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <ChatIcon color="success" />
+                          <Box>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                              챗봇 서비스
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              텍스트 기반 AI 상담
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <Chip 
+                          label={`${data.service_requirements?.chatbot || 0}채널`} 
+                          color="success" 
+                          variant="filled"
+                        />
+                      </Box>
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          상태: {data.service_requirements?.chatbot > 0 ? '활성' : '비활성'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          매니페스트: {data.service_requirements?.chatbot > 0 ? '생성됨' : '없음'}
+                        </Typography>
+                      </Box>
+                    </Paper>
+                  </Grid>
+                  
+                  {/* 어드바이저 */}
+                  <Grid item xs={12}>
+                    <Paper sx={{ p: 2, background: alpha(theme.palette.warning.main, 0.1) }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <PersonIcon color="warning" />
+                          <Box>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                              어드바이저 서비스
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              AI 기반 상담사 지원
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <Chip 
+                          label={`${data.service_requirements?.advisor || 0}채널`} 
+                          color="warning" 
+                          variant="filled"
+                        />
+                      </Box>
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          상태: {data.service_requirements?.advisor > 0 ? '활성' : '비활성'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          매니페스트: {data.service_requirements?.advisor > 0 ? '생성됨' : '없음'}
+                        </Typography>
+                      </Box>
+                    </Paper>
+                  </Grid>
                 </Grid>
-              ))}
-            </Grid>
-          </CardContent>
-        </StyledCard>
+              </CardContent>
+            </StyledCard>
+          </Grid>
+          
+          {/* 지원 서비스 섹션 */}
+          <Grid item xs={12} md={6}>
+            <StyledCard>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+                  <MemoryIcon color="secondary" />
+                  <Typography variant="h6" component="h2" sx={{ fontWeight: 'bold' }}>
+                    지원 서비스 인스턴스
+                  </Typography>
+                </Box>
+                <Grid container spacing={2}>
+                  {/* STT */}
+                  <Grid item xs={12}>
+                    <Paper sx={{ p: 2, background: alpha(theme.palette.info.main, 0.1) }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <VoiceIcon color="info" />
+                          <Box>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                              STT (음성인식)
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              음성을 텍스트로 변환
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <Chip 
+                          label={`${data.service_requirements?.stt || 0}개`} 
+                          color="info" 
+                          variant="filled"
+                        />
+                      </Box>
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          상태: {data.service_requirements?.stt > 0 ? '활성' : '비활성'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          매니페스트: {data.service_requirements?.stt > 0 ? '생성됨' : '없음'}
+                        </Typography>
+                      </Box>
+                    </Paper>
+                  </Grid>
+                  
+                  {/* TTS */}
+                  <Grid item xs={12}>
+                    <Paper sx={{ p: 2, background: alpha(theme.palette.secondary.main, 0.1) }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <TTSIcon color="secondary" />
+                          <Box>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                              TTS (음성합성)
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              텍스트를 음성으로 변환
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <Chip 
+                          label={`${data.service_requirements?.tts || 0}개`} 
+                          color="secondary" 
+                          variant="filled"
+                        />
+                      </Box>
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          상태: {data.service_requirements?.tts > 0 ? '활성' : '비활성'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          매니페스트: {data.service_requirements?.tts > 0 ? '생성됨' : '없음'}
+                        </Typography>
+                      </Box>
+                    </Paper>
+                  </Grid>
+                  
+                  {/* TA */}
+                  <Grid item xs={12}>
+                    <Paper sx={{ p: 2, background: alpha(theme.palette.error.main, 0.1) }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <AnalyticsIcon color="error" />
+                          <Box>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                              TA (감정분석)
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              대화 감정 및 톤 분석
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <Chip 
+                          label={`${data.service_requirements?.ta || 0}개`} 
+                          color="error" 
+                          variant="filled"
+                        />
+                      </Box>
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          상태: {data.service_requirements?.ta > 0 ? '활성' : '비활성'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          매니페스트: {data.service_requirements?.ta > 0 ? '생성됨' : '없음'}
+                        </Typography>
+                      </Box>
+                    </Paper>
+                  </Grid>
+                  
+                  {/* QA */}
+                  <Grid item xs={12}>
+                    <Paper sx={{ p: 2, background: alpha(theme.palette.default.main, 0.1) }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <QAIcon color="default" />
+                          <Box>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                              QA (질의응답)
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              지식베이스 기반 답변
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <Chip 
+                          label={`${data.service_requirements?.qa || 0}개`} 
+                          color="default" 
+                          variant="filled"
+                        />
+                      </Box>
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          상태: {data.service_requirements?.qa > 0 ? '활성' : '비활성'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          매니페스트: {data.service_requirements?.qa > 0 ? '생성됨' : '없음'}
+                        </Typography>
+                      </Box>
+                    </Paper>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </StyledCard>
+          </Grid>
+        </Grid>
       </TabPanel>
 
       <TabPanel value={currentTab} index={2}>

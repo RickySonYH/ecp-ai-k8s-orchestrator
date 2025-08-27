@@ -48,7 +48,6 @@ import {
   Brightness7 as LightModeIcon,
   Dashboard as DashboardIcon,
   Add as AddIcon,
-  List as ListIcon,
   Timeline as MonitoringIcon,
   Settings as SettingsIcon,
   Notifications as NotificationsIcon,
@@ -70,6 +69,8 @@ import CICDManagement from './components/CICDManagement.tsx';
 import ManifestPreviewTest from './components/ManifestPreviewTest.tsx';
 import Dashboard from './components/DemoDashboard.tsx';
 import { SettingsTab } from './components/SettingsTab.tsx';
+import { ModeSelector } from './components/ModeSelector.tsx';
+import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 
 // 타입 정의
 interface DeploymentStatus {
@@ -178,6 +179,9 @@ function App() {
   // [advice from AI] 테넌시 목록 로딩 상태 추가
   const [tenantsLoading, setTenantsLoading] = useState(false);
 
+  // [advice from AI] 모드 선택 상태 관리
+  const [modeSelected, setModeSelected] = useState(false);
+  
   // [advice from AI] 데모 모드 상태 관리 - 로컬 스토리지와 연동
   const [isDemoMode, setIsDemoMode] = useState(() => {
     // 로컬 스토리지에서 저장된 데모 모드 설정 불러오기
@@ -185,233 +189,60 @@ function App() {
     return savedDemoMode !== null ? JSON.parse(savedDemoMode) : true; // 기본값은 데모 모드
   });
 
-  // [advice from AI] 데모 모드 변경 시 로컬 스토리지에 저장
-  const handleDemoModeChange = (demoMode: boolean) => {
+  // [advice from AI] 모드 선택 처리
+  const handleModeSelect = (demoMode: boolean) => {
     setIsDemoMode(demoMode);
-    localStorage.setItem('ecp-ai-demo-mode', JSON.stringify(demoMode));
-    // 데모 모드 변경 시 테넌시 목록 다시 로드
+    setModeSelected(true);
+    // 모드 선택 후 테넌시 목록 로드
     fetchTenants();
   };
 
-  // [advice from AI] 하드코딩된 데모 테넌시 데이터 (20개 - CI/CD 서비스와 일치)
-  const demoTenants: TenantSummary[] = [
-    // 메인 서비스 테넌시
-    {
-      tenant_id: 'demo-tenant-1',
-      name: '글로벌 콜센터',
-      status: 'running',
-      preset: 'large',
-      is_demo: true,
-      services_count: 5,
-      created_at: '2024-01-15T10:30:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-2',
-      name: '스마트 상담봇',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 3,
-      created_at: '2024-01-14T15:20:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-3',
-      name: 'AI 어드바이저',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 4,
-      created_at: '2024-01-13T09:15:00Z'
-    },
-    
-    // AI/NLP 서비스 테넌시
-    {
-      tenant_id: 'demo-tenant-4',
-      name: '음성 분석 서비스',
-      status: 'running',
-      preset: 'small',
-      is_demo: true,
-      services_count: 2,
-      created_at: '2024-01-12T14:45:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-5',
-      name: 'TTS 음성합성',
-      status: 'running',
-      preset: 'small',
-      is_demo: true,
-      services_count: 2,
-      created_at: '2024-01-11T11:20:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-6',
-      name: 'NLP 엔진',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 3,
-      created_at: '2024-01-10T16:30:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-7',
-      name: 'AI 대화 관리',
-      status: 'running',
-      preset: 'large',
-      is_demo: true,
-      services_count: 6,
-      created_at: '2024-01-09T13:15:00Z'
-    },
-    
-    // 분석 서비스 테넌시
-    {
-      tenant_id: 'demo-tenant-8',
-      name: 'TA 통계분석',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 3,
-      created_at: '2024-01-08T10:45:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-9',
-      name: 'QA 품질관리',
-      status: 'running',
-      preset: 'small',
-      is_demo: true,
-      services_count: 2,
-      created_at: '2024-01-07T14:20:00Z'
-    },
-    
-    // 인프라 서비스 테넌시
-    {
-      tenant_id: 'demo-tenant-10',
-      name: '웹 서버 클러스터',
-      status: 'running',
-      preset: 'large',
-      is_demo: true,
-      services_count: 4,
-      created_at: '2024-01-06T09:30:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-11',
-      name: 'API 게이트웨이',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 3,
-      created_at: '2024-01-05T11:45:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-12',
-      name: '권한 관리 시스템',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 2,
-      created_at: '2024-01-04T15:10:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-13',
-      name: '대화 이력 저장소',
-      status: 'running',
-      preset: 'large',
-      is_demo: true,
-      services_count: 5,
-      created_at: '2024-01-03T12:25:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-14',
-      name: '시나리오 빌더',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 3,
-      created_at: '2024-01-02T16:40:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-15',
-      name: '시스템 모니터링',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 2,
-      created_at: '2024-01-01T08:15:00Z'
-    },
-    
-    // 데이터 서비스 테넌시
-    {
-      tenant_id: 'demo-tenant-16',
-      name: '데이터베이스 클러스터',
-      status: 'running',
-      preset: 'large',
-      is_demo: true,
-      services_count: 4,
-      created_at: '2023-12-31T20:30:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-17',
-      name: '벡터 데이터베이스',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 3,
-      created_at: '2023-12-30T14:20:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-18',
-      name: '캐시 시스템',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 2,
-      created_at: '2023-12-29T10:45:00Z'
-    },
-    
-    // 특화 서비스 테넌시
-    {
-      tenant_id: 'demo-tenant-19',
-      name: '실시간 통신',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 3,
-      created_at: '2023-12-28T17:15:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-20',
-      name: '화자 분리 시스템',
-      status: 'running',
-      preset: 'small',
-      is_demo: true,
-      services_count: 2,
-      created_at: '2023-12-27T13:50:00Z'
-    }
-  ];
+  // [advice from AI] 데모 모드 변경 시 로컬 스토리지에 저장 및 새로고침
+  const handleDemoModeChange = (demoMode: boolean) => {
+    setIsDemoMode(demoMode);
+    localStorage.setItem('ecp-ai-demo-mode', JSON.stringify(demoMode));
+    // 모드 변경 시 완전한 새로고침으로 앱 재시작
+    window.location.reload();
+  };
 
-  // [advice from AI] 테넌시 목록 조회 함수 (데모 모드에 따라 분기)
+  // [advice from AI] 데모 테넌시 데이터는 이제 백엔드 API에서 조회
+
+
+  // [advice from AI] 테넌시 목록 조회 함수 (통합된 데이터 관리)
   const fetchTenants = async () => {
     try {
       setTenantsLoading(true);
       
       if (isDemoMode) {
-        // 데모 모드: 하드코딩된 데모 데이터 반환
-        setTenantList(demoTenants);
-        return;
+        // 데모 모드: 데모 전용 API 사용
+        console.log('App - 데모 모드: 데모 API 호출');
+        const demoResponse = await fetch('http://localhost:8001/api/v1/demo/tenants/');
+        
+        if (demoResponse.ok) {
+          const demoData = await demoResponse.json();
+          console.log('App - 데모 API 응답:', demoData.length, '개 테넌시');
+          setTenantList(demoData);
+        } else {
+          console.log('데모 API 호출 실패 - 빈 목록으로 설정');
+          setTenantList([]);
+        }
+      } else {
+        // 운영 모드: 일반 테넌시 API 사용
+        const response = await fetch('http://localhost:8001/api/v1/tenants/');
+        
+        if (response.ok) {
+          const data = await response.json();
+          const tenants = data.tenants || [];
+          console.log('App - 운영 API 응답:', tenants.length, '개 테넌시');
+          setTenantList(tenants);
+        } else {
+          console.log('테넌시 API 호출 실패 - 빈 목록으로 설정');
+          setTenantList([]);
+        }
       }
-      
-      // 실제 모드: DB에서 데이터 조회
-      const response = await fetch('http://localhost:8001/api/v1/tenants/');
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: 테넌시 목록 조회 실패`);
-      }
-      
-      const data = await response.json();
-      setTenantList(data.tenants || []);
       
     } catch (error) {
       console.error('테넌시 목록 조회 실패:', error);
-      // 에러 발생 시 빈 배열로 설정
       setTenantList([]);
     } finally {
       setTenantsLoading(false);
@@ -520,18 +351,7 @@ function App() {
     }
   };
 
-  // 테넌시 목록 조회
-  const fetchTenantList = async () => {
-    try {
-      const response = await fetch('/api/v1/tenants/');
-      if (response.ok) {
-        const data = await response.json();
-        setTenantList(data.tenants || []);
-      }
-    } catch (error) {
-      console.error('테넌시 목록 조회 실패:', error);
-    }
-  };
+  // [advice from AI] fetchTenantList 제거 - fetchTenants로 통일
 
   // 시스템 메트릭 조회
   const fetchSystemMetrics = async () => {
@@ -555,12 +375,12 @@ function App() {
     // 페이지 로드 시 상단으로 스크롤
     window.scrollTo(0, 0);
     
-    fetchTenantList();
+    fetchTenants();
     fetchSystemMetrics();
     
     // 주기적 업데이트 (30초마다)
     const interval = setInterval(() => {
-      fetchTenantList();
+      fetchTenants();
       fetchSystemMetrics();
     }, 30000);
     
@@ -584,7 +404,8 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ flexGrow: 1, minHeight: '100vh' }}>
+      <ErrorBoundary>
+        <Box sx={{ flexGrow: 1, minHeight: '100vh' }}>
         {/* [advice from AI] 메인 앱바 - 고정 위치로 변경하여 항상 상단에 표시 */}
         <StyledAppBar position="fixed">
           <Toolbar>
@@ -629,6 +450,14 @@ function App() {
               </IconButton>
             </Tooltip>
             
+            {/* 현재 모드 표시 */}
+            <Chip 
+              label={isDemoMode ? "데모 모드" : "실사용 모드"} 
+              color={isDemoMode ? "secondary" : "primary"}
+              size="small"
+              sx={{ ml: 2 }}
+            />
+            
             <Typography variant="body2" sx={{ ml: 2 }}>
               Developer Console v1.0
             </Typography>
@@ -660,23 +489,17 @@ function App() {
             
             <ListItem 
               button 
-              onClick={() => { setCurrentTab(0); setDrawerOpen(false); }}
-            >
-              <ListItemIcon><AddIcon /></ListItemIcon>
-              <ListItemText primary="테넌시 생성" />
-            </ListItem>
-            
-            <ListItem 
-              button 
               onClick={() => { setCurrentTab(1); setDrawerOpen(false); }}
             >
               <ListItemIcon><DashboardIcon /></ListItemIcon>
               <ListItemText primary="대시보드" />
             </ListItem>
             
+            {/* [advice from AI] 테넌시 목록 메뉴 제거 - 대시보드로 통합 완료 */}
+            
             <ListItem button onClick={() => { setCurrentTab(3); setDrawerOpen(false); }}>
-              <ListItemIcon><ListIcon /></ListItemIcon>
-              <ListItemText primary="테넌시 목록" />
+              <ListItemIcon><BuildIcon /></ListItemIcon>
+              <ListItemText primary="CI/CD 관리" />
             </ListItem>
             
             <ListItem button onClick={() => { setCurrentTab(4); setDrawerOpen(false); }}>
@@ -685,16 +508,11 @@ function App() {
             </ListItem>
             
             <ListItem button onClick={() => { setCurrentTab(5); setDrawerOpen(false); }}>
-              <ListItemIcon><BuildIcon /></ListItemIcon>
-              <ListItemText primary="CI/CD 관리" />
-            </ListItem>
-            
-            <ListItem button onClick={() => { setCurrentTab(6); setDrawerOpen(false); }}>
               <ListItemIcon><SettingsIcon /></ListItemIcon>
               <ListItemText primary="설정" />
             </ListItem>
             
-            <ListItem button onClick={() => { setCurrentTab(7); setDrawerOpen(false); }}>
+            <ListItem button onClick={() => { setCurrentTab(6); setDrawerOpen(false); }}>
               <ListItemIcon><BuildIcon /></ListItemIcon>
               <ListItemText primary="매니페스트 테스트" />
             </ListItem>
@@ -767,8 +585,13 @@ function App() {
 
         {/* [advice from AI] 메인 컨텐츠 - 고정 AppBar를 위한 상단 여백 추가 */}
         <Container maxWidth="xl" sx={{ mt: 10, pb: 10 }}>
-          {/* 시스템 상태 오버뷰 */}
-          {systemMetrics && (
+          {/* 모드 선택 화면 또는 메인 컨텐츠 */}
+          {!modeSelected ? (
+            <ModeSelector onModeSelect={handleModeSelect} />
+          ) : (
+            <>
+              {/* 시스템 상태 오버뷰 */}
+              {systemMetrics && (
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid item xs={12} md={3}>
                 <SystemMetricCard>
@@ -855,11 +678,7 @@ function App() {
                 iconPosition="start"
               />
 
-              <Tab 
-                label="📋 테넌시 목록" 
-                icon={<ListIcon />}
-                iconPosition="start"
-              />
+              {/* [advice from AI] 테넌시 목록 탭 제거 - 대시보드로 통합 완료 */}
               <Tab 
                 label="🔧 CI/CD 관리" 
                 icon={<BuildIcon />}
@@ -883,9 +702,17 @@ function App() {
             <TenantCreator 
               onTenantCreated={handleTenantCreated} 
               onTenantSaved={(tenant) => {
-                setTenantList(prev => [...prev, tenant]);
+                // [advice from AI] 테넌시 저장 후 DB에서 최신 데이터 다시 조회
+                console.log('테넌시 저장 완료, 목록 새로고침:', tenant.tenant_id);
+                fetchTenants(); // DB에서 최신 데이터 조회
                 setSnackbarMessage(`테넌시 '${tenant.tenant_id}' 저장 완료!`);
                 setSnackbarOpen(true);
+                
+                // 대시보드 탭으로 이동
+                setCurrentTab(1);
+                
+                // 저장된 테넌시를 선택 상태로 설정
+                setSelectedTenant(tenant.tenant_id);
               }}
             />
           </TabPanel>
@@ -896,39 +723,30 @@ function App() {
 
 
 
-          <TabPanel value={currentTab} index={2}>
-            <TenantListView 
-              tenants={tenantList}
-              loading={tenantsLoading}
-              onTenantSelect={(tenantId) => {
-                setSelectedTenant(tenantId);
-                // 팝업 대시보드 표시를 위한 상태 설정
-                setDashboardPopupOpen(true);
-              }}
-              onRefresh={fetchTenants}
-            />
-          </TabPanel>
+          {/* [advice from AI] 테넌시 목록 탭 컨텐츠 제거 - 대시보드로 통합 완료 */}
 
           {/* CI/CD 관리 탭 */}
-          <TabPanel value={currentTab} index={3}>
+          <TabPanel value={currentTab} index={2}>
             <CICDManagement isDemoMode={isDemoMode} />
           </TabPanel>
 
           {/* 고급 모니터링 탭 */}
-          <TabPanel value={currentTab} index={4}>
+          <TabPanel value={currentTab} index={3}>
             <AdvancedMonitoring isDemoMode={isDemoMode} />
           </TabPanel>
 
-          <TabPanel value={currentTab} index={5}>
+          <TabPanel value={currentTab} index={4}>
             <SettingsTab 
               isDemoMode={isDemoMode}
               onDemoModeChange={handleDemoModeChange}
             />
           </TabPanel>
           
-          <TabPanel value={currentTab} index={6}>
+          <TabPanel value={currentTab} index={5}>
             <ManifestPreviewTest />
           </TabPanel>
+            </>
+          )}
         </Container>
 
         {/* 플로팅 액션 버튼 */}
@@ -990,7 +808,8 @@ function App() {
             )}
           </DialogContent>
         </Dialog>
-      </Box>
+        </Box>
+      </ErrorBoundary>
     </ThemeProvider>
   );
 }

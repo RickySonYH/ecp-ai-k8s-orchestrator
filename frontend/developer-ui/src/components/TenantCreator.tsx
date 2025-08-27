@@ -7,7 +7,7 @@
  * - Material-UI 반응형 디자인
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -39,7 +39,9 @@ import {
   ExpandLess as ExpandLessIcon,
   Rocket as RocketIcon,
   Memory as MemoryIcon,
-  Speed as SpeedIcon
+  Speed as SpeedIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { DeploymentWizard } from './DeploymentWizard.tsx';
@@ -101,9 +103,22 @@ const MetricChip = styled(Chip)(({ theme }) => ({
 }));
 
 export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, onTenantSaved }) => {
+  // [advice from AI] 데모 모드 감지
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  
+  // 컴포넌트 마운트 시 데모 모드 확인
+  useEffect(() => {
+    const demoMode = localStorage.getItem('ecp-ai-demo-mode');
+    setIsDemoMode(demoMode === 'true');
+    console.log('TenantCreator - 데모 모드 감지:', demoMode === 'true');
+  }, []);
   // 상태 관리
   const [tenantId, setTenantId] = useState('');
   const [gpuType, setGpuType] = useState<'auto' | 't4' | 'v100' | 'l40s'>('auto');
+  // [advice from AI] 테넌시 이름 중복 체크 상태
+  const [nameCheckStatus, setNameCheckStatus] = useState<'idle' | 'checking' | 'available' | 'duplicate'>('idle');
+  const [nameCheckMessage, setNameCheckMessage] = useState('');
+  const [checkTimeout, setCheckTimeout] = useState<NodeJS.Timeout | null>(null);
   // [advice from AI] 클라우드 제공업체 선택을 매니페스트 생성 후로 이동
   const [services, setServices] = useState<ServiceRequirements>({
     callbot: 0,
@@ -316,10 +331,73 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
 
   // [advice from AI] 클라우드 비교 useEffect 제거 - 더 이상 필요하지 않음
 
-  // [advice from AI] 테넌시 저장 핸들러 (배포 없이 저장만)
-  const handleSave = () => {
+  // [advice from AI] 테넌시 이름 중복 체크 함수
+  const checkTenantNameDuplicate = async (name: string) => {
+    if (!name.trim()) {
+      setNameCheckStatus('idle');
+      setNameCheckMessage('');
+      return;
+    }
+
+    setNameCheckStatus('checking');
+    setNameCheckMessage('이름 확인 중...');
+
+    try {
+      const response = await fetch(`http://localhost:8001/api/v1/demo/tenants/check-name/${encodeURIComponent(name)}`);
+      
+      if (!response.ok) {
+        throw new Error('이름 확인 실패');
+      }
+
+      const result = await response.json();
+      
+      if (result.is_duplicate) {
+        setNameCheckStatus('duplicate');
+        setNameCheckMessage(result.message || '이미 사용 중인 테넌시 이름입니다.');
+      } else {
+        setNameCheckStatus('available');
+        setNameCheckMessage(result.message || '사용 가능한 테넌시 이름입니다.');
+      }
+    } catch (error) {
+      console.error('이름 중복 체크 실패:', error);
+      setNameCheckStatus('idle');
+      setNameCheckMessage('이름 확인 중 오류가 발생했습니다.');
+    }
+  };
+
+  // [advice from AI] 테넌시 이름 입력 핸들러 (실시간 검증)
+  const handleTenantIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setTenantId(newValue);
+
+    // 기존 타이머 제거
+    if (checkTimeout) {
+      clearTimeout(checkTimeout);
+    }
+
+    // 500ms 후에 중복 체크 실행 (디바운싱)
+    const newTimeout = setTimeout(() => {
+      checkTenantNameDuplicate(newValue);
+    }, 500);
+    
+    setCheckTimeout(newTimeout);
+  };
+
+  // [advice from AI] 테넌시 저장 핸들러 (실제 DB 저장)
+  const handleSave = async () => {
     if (!tenantId.trim()) {
       setError('테넌시 ID를 입력해주세요.');
+      return;
+    }
+
+    // [advice from AI] 중복 체크 상태 확인
+    if (nameCheckStatus === 'duplicate') {
+      setError('이미 사용 중인 테넌시 이름입니다. 다른 이름을 사용해주세요.');
+      return;
+    }
+
+    if (nameCheckStatus === 'checking') {
+      setError('이름 중복 체크가 진행 중입니다. 잠시 후 다시 시도해주세요.');
       return;
     }
 
@@ -330,42 +408,99 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
       return;
     }
 
-    // 저장할 테넌시 정보 생성
-    const savedTenant: TenantSummary = {
-      tenant_id: tenantId.toLowerCase(),
-      status: 'pending',
-      preset: resourceEstimation.preset,
-      services_count: Object.values(services).filter((v: any) => v > 0).length,
-      created_at: new Date().toISOString()
-    };
+    try {
+      // [advice from AI] 데모 모드에 따라 적절한 API 호출
+      const apiUrl = isDemoMode 
+        ? 'http://localhost:8001/api/v1/demo/tenants/' 
+        : 'http://localhost:8001/api/v1/tenants/';
+      
+      console.log('TenantCreator - API 호출:', apiUrl, '데모 모드:', isDemoMode);
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tenant_id: tenantId.toLowerCase(),
+          name: `테넌시 ${tenantId}`,
+          preset: 'medium', // 기본값
+          status: 'running',
+          is_demo: isDemoMode,
+          service_requirements: {
+            callbot: services.callbot,
+            chatbot: services.chatbot,
+            advisor: services.advisor,
+            stt: services.stt,
+            tts: services.tts,
+            ta: services.ta,
+            qa: services.qa
+          },
+          gpu_type: gpuType,
+          cloud_provider: 'iaas',
+          auto_deploy: false  // 저장만 하고 배포는 안함
+        })
+      });
 
-    // 부모 컴포넌트에 저장된 테넌시 전달
-    if (onTenantSaved) {
-      onTenantSaved(savedTenant);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || '테넌시 저장에 실패했습니다.');
+      }
+
+      const result = await response.json();
+      
+      // 저장된 테넌시 정보 생성
+      const savedTenant: TenantSummary = {
+        tenant_id: result.tenant_id,
+        status: result.deployment_status || 'pending',
+        preset: result.preset,
+        services_count: Object.values(services).filter((v: any) => v > 0).length,
+        created_at: result.created_at || new Date().toISOString()
+      };
+
+      // 부모 컴포넌트에 저장된 테넌시 전달
+      if (onTenantSaved) {
+        onTenantSaved(savedTenant);
+      }
+
+      // 성공 메시지 표시
+      setSnackbarMessage(`테넌시 '${tenantId}' DB 저장 완료!`);
+      setSnackbarOpen(true);
+      
+      // 폼 리셋
+      setTenantId('');
+      setServices({
+        callbot: 0,
+        chatbot: 0,
+        advisor: 0,
+        stt: 0,
+        tts: 0,
+        ta: 0,
+        qa: 0
+      });
+      setGpuType('auto');
+      
+    } catch (error) {
+      console.error('테넌시 저장 실패:', error);
+      setError(error instanceof Error ? error.message : '테넌시 저장 중 오류가 발생했습니다.');
     }
-
-    // 성공 메시지 표시
-    setSnackbarMessage(`테넌시 '${tenantId}' 저장 완료!`);
-    setSnackbarOpen(true);
-    
-    // 폼 리셋
-    setTenantId('');
-    setServices({
-      callbot: 0,
-      chatbot: 0,
-      advisor: 0,
-      stt: 0,
-      tts: 0,
-      ta: 0,
-      qa: 0
-    });
-    setGpuType('auto');
   };
 
   // 테넌시 생성 핸들러 (실시간 배포)
   const handleSubmit = async () => {
     if (!tenantId.trim()) {
       setError('테넌시 ID를 입력해주세요.');
+      return;
+    }
+
+    // [advice from AI] 중복 체크 상태 확인
+    if (nameCheckStatus === 'duplicate') {
+      setError('이미 사용 중인 테넌시 이름입니다. 다른 이름을 사용해주세요.');
+      return;
+    }
+
+    if (nameCheckStatus === 'checking') {
+      setError('이름 중복 체크가 진행 중입니다. 잠시 후 다시 시도해주세요.');
       return;
     }
 
@@ -457,11 +592,22 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
                 fullWidth
                 label="테넌시 ID"
                 value={tenantId}
-                onChange={(e) => setTenantId(e.target.value)}
+                onChange={handleTenantIdChange}
                 placeholder="예: customer-abc"
-                helperText="소문자, 숫자, 하이픈만 사용 가능"
+                helperText={nameCheckMessage || "소문자, 숫자, 하이픈만 사용 가능"}
                 required
                 disabled={loading}
+                error={nameCheckStatus === 'duplicate'}
+                color={nameCheckStatus === 'available' ? 'success' : 'primary'}
+                InputProps={{
+                  endAdornment: nameCheckStatus === 'checking' ? (
+                    <CircularProgress size={20} />
+                  ) : nameCheckStatus === 'available' ? (
+                    <CheckCircleIcon sx={{ color: 'success.main' }} />
+                  ) : nameCheckStatus === 'duplicate' ? (
+                    <ErrorIcon sx={{ color: 'error.main' }} />
+                  ) : null
+                }}
               />
             </Grid>
             
@@ -711,7 +857,7 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
                 variant="contained"
                 size="large"
                 onClick={() => setShowWizard(true)}
-                disabled={!tenantId.trim() || Object.values(services).every(v => v === 0)}
+                disabled={!tenantId.trim() || Object.values(services).every(v => v === 0) || nameCheckStatus === 'duplicate' || nameCheckStatus === 'checking'}
                 startIcon={<RocketIcon />}
                 sx={{ 
                   px: 6, 

@@ -21,7 +21,7 @@ import logging
 # 데이터베이스 연결 설정
 DATABASE_URL = os.getenv(
     "DATABASE_URL", 
-    "postgresql://ecp_user:ecp_password@localhost:5433/ecp_orchestrator"
+    "postgresql://ecp_user:ecp_password@postgres:5432/ecp_orchestrator"
 )
 
 # SQLAlchemy 엔진 및 세션 생성

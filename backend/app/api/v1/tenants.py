@@ -86,6 +86,28 @@ class ResourceEstimation(BaseModel):
     storage: Dict[str, str] = Field(..., description="스토리지 요구사항")
 
 
+class TenantMetrics(BaseModel):
+    """테넌시 메트릭 모델"""
+    tenant_id: str = Field(..., description="테넌시 ID")
+    cpu_usage: float = Field(..., description="CPU 사용률 (%)")
+    memory_usage: float = Field(..., description="메모리 사용률 (%)")
+    gpu_usage: float = Field(..., description="GPU 사용률 (%)")
+    network_io: Dict[str, float] = Field(..., description="네트워크 I/O (MB/s)")
+    active_connections: int = Field(..., description="활성 연결 수")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "tenant_id": "demo-tenant",
+                "cpu_usage": 45.2,
+                "memory_usage": 62.8,
+                "gpu_usage": 78.5,
+                "network_io": {"rx": 5.2, "tx": 3.8},
+                "active_connections": 25
+            }
+        }
+
+
 class TenantCreateResponse(BaseModel):
     """테넌시 생성 응답 모델"""
     success: bool = Field(..., description="생성 성공 여부")
@@ -170,6 +192,42 @@ async def get_tenants_from_db(db: Session) -> List[TenantSummary]:
                 created_at=tenant.created_at
             )
             tenant_summaries.append(tenant_summary)
+        
+        # [advice from AI] 데모모드 기본 데이터 추가 (DB에 없을 때)
+        if not tenant_summaries:
+            from datetime import datetime, timedelta
+            
+            # 기본 데모 테넌시 생성
+            demo_tenants = [
+                TenantSummary(
+                    tenant_id="demo-tenant-1",
+                    name="글로벌 콜센터",
+                    preset="large",
+                    is_demo=True,
+                    status="running",
+                    services_count=5,
+                    created_at=datetime.now() - timedelta(days=1)
+                ),
+                TenantSummary(
+                    tenant_id="demo-tenant-2",
+                    name="스마트 상담봇",
+                    preset="medium",
+                    is_demo=True,
+                    status="running",
+                    services_count=3,
+                    created_at=datetime.now() - timedelta(days=2)
+                ),
+                TenantSummary(
+                    tenant_id="demo-tenant-3",
+                    name="AI 어드바이저",
+                    preset="medium",
+                    is_demo=True,
+                    status="running",
+                    services_count=4,
+                    created_at=datetime.now() - timedelta(days=3)
+                )
+            ]
+            tenant_summaries.extend(demo_tenants)
         
         return tenant_summaries
         
@@ -357,6 +415,31 @@ async def create_tenant(
             db.add(service)
         
         db.commit()
+        
+        # 5.5. [advice from AI] 하드웨어 정보 기반 모니터링 데이터 자동 생성
+        from app.models.realtime_monitoring import RealtimeMonitoringManager
+        monitoring_manager = RealtimeMonitoringManager()
+        
+        # 테넌시 하드웨어 스펙 기반으로 모니터링 메트릭 생성
+        hardware_specs = {
+            "tenant_id": request.tenant_id,
+            "cpu_cores": comprehensive_requirements.get("cpu_cores", 31),
+            "memory_gb": int(comprehensive_requirements.get("memory_limit", "16Gi").replace("Gi", "")),
+            "gpu_count": comprehensive_requirements.get("gpu_limit", 3),
+            "gpu_type": request.gpu_type,
+            "services": services_data
+        }
+        
+        # 서비스별 모니터링 에이전트 생성
+        for service_data in services_data:
+            monitoring_manager.create_service_monitoring_agent(
+                tenant_id=request.tenant_id,
+                service_name=service_data["service_name"],
+                service_count=service_data["count"],
+                hardware_specs=hardware_specs
+            )
+        
+        logger.info(f"[Tenant Creation] 테넌시 '{request.tenant_id}' 모니터링 에이전트 생성 완료")
         
         # 6. 응답 생성
         response = TenantCreateResponse(
@@ -563,38 +646,7 @@ async def get_tenant_metrics(tenant_id: str):
         )
 
 
-@router.get("/")
-async def list_tenants():
-    """
-    테넌시 목록 조회
-    - 모든 활성 테넌시 목록
-    """
-    try:
-        logger.info("테넌시 목록 조회")
-        
-        # 실제 구현에서는 Kubernetes API로 네임스페이스 목록 조회
-        # 여기서는 임시 데이터
-        tenants = [
-            {
-                "tenant_id": "demo-tenant",
-                "preset": "small",
-                "status": "Running",
-                "services_count": 3,
-                "created_at": "2024-12-01T10:00:00Z"
-            }
-        ]
-        
-        return {
-            "tenants": tenants,
-            "total_count": len(tenants)
-        }
-        
-    except Exception as e:
-        logger.error("테넌시 목록 조회 실패", error=str(e))
-        raise HTTPException(
-            status_code=500,
-            detail=f"테넌시 목록 조회 중 오류가 발생했습니다: {str(e)}"
-        )
+# [advice from AI] 중복된 엔드포인트 제거 - 위의 list_tenants와 통합
 
 
 class ManifestGenerationRequest(BaseModel):
@@ -728,10 +780,10 @@ async def download_deployment_package(
         )
 
 
-@router.get("/{tenant_id}/manifest-preview")
+@router.post("/{tenant_id}/manifest-preview")
 async def get_manifest_preview(
     tenant_id: str,
-    service_requirements: ServiceRequirements,
+    request: ServiceRequirements,
     gpu_type: str = "auto",
     tenant_mgr: TenantManager = Depends(get_tenant_manager)
 ):
@@ -747,7 +799,7 @@ async def get_manifest_preview(
         # 테넌시 사양 생성
         tenant_specs = tenant_mgr.generate_tenant_specs(
             tenant_id=tenant_id,
-            service_requirements=service_requirements.model_dump(),
+            service_requirements=request.model_dump(),
             gpu_type=gpu_type
         )
         

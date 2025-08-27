@@ -228,38 +228,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ isDemoMode, onDemoMode
           </Typography>
         </Alert>
 
-        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          <Chip 
-            icon={<GitIcon />} 
-            label="Git 설정" 
-            color="primary" 
-            variant="outlined"
-          />
-          <Chip 
-            icon={<CICDIcon />} 
-            label="CI/CD 설정" 
-            color="primary" 
-            variant="outlined"
-          />
-          <Chip 
-            icon={<K8sIcon />} 
-            label="Kubernetes 설정" 
-            color="primary" 
-            variant="outlined"
-          />
-          <Chip 
-            icon={<MonitorIcon />} 
-            label="모니터링 설정" 
-            color="primary" 
-            variant="outlined"
-          />
-          <Chip 
-            icon={<SecurityIcon />} 
-            label="보안 설정" 
-            color="primary" 
-            variant="outlined"
-          />
-        </Box>
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <AlertTitle>⚠️ 모드 전환 주의사항</AlertTitle>
+          <Typography variant="body2">
+            모드를 변경하면 페이지가 새로고침되어 모든 상태가 초기화됩니다. 
+            데모 모드에서 생성한 테넌시와 매니페스트는 DB에 저장되므로 실사용 모드에서도 확인할 수 있습니다.
+          </Typography>
+        </Alert>
+
+        {/* [advice from AI] 중복 제거: Chip 네비게이션을 제거하고 Tab만 사용 */}
       </Paper>
 
       {/* 설정 탭 네비게이션 */}
@@ -276,7 +253,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ isDemoMode, onDemoMode
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <GitIcon />
-                  <span>Git 설정</span>
+                  <span>Git</span>
                 </Box>
               } 
               {...a11yProps(0)} 
@@ -285,7 +262,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ isDemoMode, onDemoMode
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <CICDIcon />
-                  <span>CI/CD 설정</span>
+                  <span>CI/CD</span>
                 </Box>
               } 
               {...a11yProps(1)} 
@@ -294,7 +271,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ isDemoMode, onDemoMode
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <K8sIcon />
-                  <span>Kubernetes 설정</span>
+                  <span>Kubernetes</span>
                 </Box>
               } 
               {...a11yProps(2)} 
@@ -303,7 +280,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ isDemoMode, onDemoMode
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <MonitorIcon />
-                  <span>모니터링 설정</span>
+                  <span>모니터링</span>
                 </Box>
               } 
               {...a11yProps(3)} 
@@ -312,7 +289,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ isDemoMode, onDemoMode
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <SecurityIcon />
-                  <span>보안 설정</span>
+                  <span>보안</span>
                 </Box>
               } 
               {...a11yProps(4)} 

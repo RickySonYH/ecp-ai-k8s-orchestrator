@@ -96,24 +96,62 @@ const ManifestPreview: React.FC<ManifestPreviewProps> = ({
     setError(null);
     
     try {
-      const response = await fetch(`/api/v1/tenants/${tenantId}/manifest-preview`, {
-        method: 'GET',
+      // [advice from AI] manifest-preview 엔드포인트 사용 - 올바른 백엔드 주소 사용
+      const response = await fetch(`http://localhost:8001/api/v1/tenants/${tenantId}/manifest-preview`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          service_requirements: serviceRequirements,
+          callbot: serviceRequirements.callbot || 0,
+          chatbot: serviceRequirements.chatbot || 0,
+          advisor: serviceRequirements.advisor || 0,
+          stt: serviceRequirements.stt || 0,
+          tts: serviceRequirements.tts || 0,
+          ta: serviceRequirements.ta || 0,
+          qa: serviceRequirements.qa || 0,
           gpu_type: gpuType
         })
       });
       
       if (!response.ok) {
-        throw new Error('매니페스트 미리보기 조회 실패');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || '매니페스트 생성 실패');
       }
       
       const data = await response.json();
-      setManifestData(data);
+      
+      // [advice from AI] 응답 데이터를 ManifestPreviewData 형식에 맞게 변환
+      const transformedData: ManifestPreviewData = {
+        tenant_id: tenantId,
+        manifest_files: Object.keys(data.manifests || {}),
+        image_matching_info: data.image_matching_info || [],
+        manifest_editability: {
+          can_edit: true,
+          edit_reasons: ['매니페스트 수정이 가능합니다'],
+          edit_restrictions: []
+        },
+        service_configs: data.service_configs || {},
+        environment_configs: data.environment_configs || {}
+      };
+      
+      setManifestData(transformedData);
       
     } catch (err) {
-      setError(err instanceof Error ? err.message : '알 수 없는 오류');
+      console.error('매니페스트 생성 에러:', err);
+      
+      // [advice from AI] 더 자세한 에러 메시지 제공
+      let errorMessage = '알 수 없는 오류가 발생했습니다.';
+      
+      if (err instanceof Error) {
+        if (err.message.includes('Failed to fetch')) {
+          errorMessage = '백엔드 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.';
+        } else if (err.message.includes('매니페스트 생성 실패')) {
+          errorMessage = '매니페스트 생성 중 오류가 발생했습니다. 서비스 요구사항을 확인해주세요.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -128,7 +166,7 @@ const ManifestPreview: React.FC<ManifestPreviewProps> = ({
     if (!editingFile || !editedContent) return;
     
     try {
-      const response = await fetch(`/api/v1/tenants/${tenantId}/update-manifest`, {
+      const response = await fetch(`http://localhost:8001/api/v1/tenants/${tenantId}/update-manifest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

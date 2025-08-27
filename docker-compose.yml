@@ -68,36 +68,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Server Resource Generator - 독립적인 하드웨어 계산 서비스
-  hardware-calculator:
-    build:
-      context: ../Server Resource Generator
-      dockerfile: Dockerfile
-    container_name: ecp-hardware-calculator
-    environment:
-      - PYTHONPATH=/app
-      - PYTHONUNBUFFERED=1
-      - PYTHONDONTWRITEBYTECODE=1
-    volumes:
-      - ../Server Resource Generator/app:/app/app:rw
-      - ../Server Resource Generator/logs:/app/logs:rw
-      - ./backend/config:/app/config:ro
-    ports:
-      - "2992:8000"
-    networks:
-      - ecp-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+  # [advice from AI] Server Resource Generator 제거 - 백엔드에 통합됨
 
   # 백엔드 API 서버 - ECP-AI 오케스트레이션 엔진 (개발 환경)
   backend:

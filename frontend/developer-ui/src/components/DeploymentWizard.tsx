@@ -682,17 +682,74 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
     }
   };
 
-  // 테넌시 저장 (배포 없이)
-  const handleSaveTenant = () => {
-    if (onTenantSaved) {
-      const savedTenant = {
-        tenant_id: tenantId,
-        status: 'pending',
-        preset: 'auto', // 프리셋은 자동 계산
-        services_count: Object.values(serviceRequirements).filter((v: any) => v > 0).length,
-        created_at: new Date().toISOString()
+  // [advice from AI] 데모 모드 감지
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  
+  // 컴포넌트 마운트 시 데모 모드 확인
+  useEffect(() => {
+    const demoMode = localStorage.getItem('ecp-ai-demo-mode');
+    setIsDemoMode(demoMode === 'true');
+  }, []);
+
+  // 테넌시 저장 (배포 없이) - 실제 API 호출
+  const handleSaveTenant = async () => {
+    try {
+      // [advice from AI] 데모 모드에 따라 적절한 API 호출
+      const apiUrl = isDemoMode 
+        ? 'http://localhost:8001/api/v1/demo/tenants/' 
+        : 'http://localhost:8001/api/v1/tenants/';
+      
+      console.log('DeploymentWizard - API 호출:', apiUrl, '데모 모드:', isDemoMode);
+      
+      const requestData = isDemoMode ? {
+        // 데모 모드: 데모 API 형식
+        name: tenantId,
+        preset: 'medium',
+        service_requirements: serviceRequirements
+      } : {
+        // 운영 모드: 운영 API 형식
+        tenant_id: tenantId.toLowerCase(),
+        service_requirements: serviceRequirements,
+        gpu_type: gpuType || 'auto',
+        cloud_provider: 'iaas',
+        auto_deploy: false
       };
-      onTenantSaved(savedTenant);
+      
+      console.log('API 요청 데이터:', requestData);
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || '테넌시 저장에 실패했습니다.');
+      }
+
+      const result = await response.json();
+      
+      // 저장된 테넌시 정보 생성
+      const savedTenant = {
+        tenant_id: result.tenant_id,
+        status: result.status || 'running',
+        preset: result.preset || 'medium',
+        services_count: Object.values(serviceRequirements).filter((v: any) => v > 0).length,
+        created_at: result.created_at || new Date().toISOString(),
+        is_demo: isDemoMode
+      };
+
+      if (onTenantSaved) {
+        onTenantSaved(savedTenant);
+      }
+      
+    } catch (error) {
+      console.error('테넌시 저장 실패:', error);
+      // 에러 처리 (사용자에게 알림)
+      alert(`테넌시 저장 실패: ${error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'}`);
     }
   };
 
