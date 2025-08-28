@@ -70,6 +70,7 @@ interface ResourceEstimation {
 interface TenantCreatorProps {
   onTenantCreated: (result: any) => void;
   onTenantSaved?: (tenant: TenantSummary) => void;
+  isDemoMode?: boolean;
 }
 
 interface TenantSummary {
@@ -100,7 +101,7 @@ const MetricChip = styled(Chip)(({ theme }) => ({
   fontWeight: 'bold',
 }));
 
-export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, onTenantSaved }) => {
+export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, onTenantSaved, isDemoMode = false }) => {
   // 상태 관리
   const [tenantId, setTenantId] = useState('');
   const [gpuType, setGpuType] = useState<'auto' | 't4' | 'v100' | 'l40s'>('auto');
@@ -362,7 +363,7 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
     setGpuType('auto');
   };
 
-  // 테넌시 생성 핸들러 (실시간 배포)
+  // [advice from AI] 통합 데이터 서비스를 사용한 테넌시 생성 핸들러
   const handleSubmit = async () => {
     if (!tenantId.trim()) {
       setError('테넌시 ID를 입력해주세요.');
@@ -380,6 +381,8 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
     setError(null);
 
     try {
+      // 데모 모드에서는 DemoDataManager를 통해 생성
+      // 실사용 모드에서는 실제 API 호출
       const response = await fetch('/api/v1/tenants/', {
         method: 'POST',
         headers: {

@@ -140,40 +140,55 @@ const AdvancedMonitoring: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = t
     setAlerts(generateAlerts());
   };
 
-  // 실제 데이터 로드 함수
+  // 실제 데이터 로드 함수 (K8S Simulator 연동)
   const loadRealData = async () => {
     try {
-      // 실제 모니터링 API 호출
+      // [advice from AI] K8S Simulator 연동 API 호출
       const [realtimeRes, comparisonRes, slaRes, alertsRes] = await Promise.all([
-        fetch('http://localhost:8001/api/v1/tenants/monitoring/system-metrics'),
-        fetch('http://localhost:8001/api/v1/tenants/monitoring/tenant-comparison'),
-        fetch('http://localhost:8001/api/v1/tenants/monitoring/sla-trends'),
-        fetch('http://localhost:8001/api/v1/tenants/monitoring/alerts')
+        fetch('http://localhost:8001/api/v1/simulator/monitoring/advanced/realtime'),
+        fetch('http://localhost:8001/api/v1/simulator/monitoring/advanced/tenants'),
+        fetch('http://localhost:8001/api/v1/simulator/monitoring/advanced/sla'),
+        fetch('http://localhost:8001/api/v1/simulator/monitoring/advanced/alerts')
       ]);
 
       if (realtimeRes.ok) {
         const realtimeData = await realtimeRes.json();
         setRealtimeData(realtimeData.metrics || []);
+      } else {
+        console.warn('실시간 데이터 로드 실패, 빈 데이터 표시');
+        setRealtimeData([]);  // [advice from AI] 빈 배열로 설정
       }
 
       if (comparisonRes.ok) {
         const comparisonData = await comparisonRes.json();
         setTenantComparisonData(comparisonData.tenants || []);
+      } else {
+        console.warn('테넌트 비교 데이터 로드 실패, 빈 데이터 표시');
+        setTenantComparisonData([]);  // [advice from AI] 빈 배열로 설정
       }
 
       if (slaRes.ok) {
         const slaData = await slaRes.json();
         setSlaMetrics(slaData.metrics || []);
+      } else {
+        console.warn('SLA 데이터 로드 실패, 빈 데이터 표시');
+        setSlaMetrics([]);  // [advice from AI] 빈 배열로 설정
       }
 
       if (alertsRes.ok) {
         const alertsData = await alertsRes.json();
         setAlerts(alertsData.alerts || []);
+      } else {
+        console.warn('알림 데이터 로드 실패, 빈 데이터 표시');
+        setAlerts([]);  // [advice from AI] 빈 배열로 설정
       }
     } catch (error) {
-      console.error('실제 모니터링 데이터 로드 실패:', error);
-      // API 실패 시 데모 데이터로 폴백
-      loadDemoData();
+      console.error('K8S Simulator 모니터링 데이터 로드 실패:', error);
+      // [advice from AI] K8S Simulator 연결 실패 시 빈 데이터 표시 (실사용 모드에서는 데모 데이터 사용 안 함)
+      setRealtimeData([]);
+      setTenantComparisonData([]);
+      setSlaMetrics([]);
+      setAlerts([]);
     }
   };
 
@@ -360,9 +375,16 @@ const AdvancedMonitoring: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = t
 
         <Typography variant="body2" color="text.secondary">
           마지막 업데이트: {currentTime.toLocaleString()} | 
-          활성 테넌시: {demoTenants.length}개 | 
-          총 알림: {alerts.filter(a => !a.resolved).length}개
+          활성 테넌시: {isDemoMode ? demoTenants.length : tenantComparisonData.length}개 | 
+          총 알림: {alerts.filter(a => !a.resolved).length}개 | 
+          데이터 소스: {isDemoMode ? '데모 모드 (가상 데이터)' : 'K8S Simulator (배포된 테넌트만)'}
         </Typography>
+        {!isDemoMode && tenantComparisonData.length === 0 && (
+          <Typography variant="body2" color="info.main" sx={{ mt: 1 }}>
+            💡 실사용 모드에서는 테넌트를 배포해야 모니터링 데이터가 표시됩니다. 
+            "테넌트 생성" → "배포 마법사"에서 테넌트를 배포해보세요.
+          </Typography>
+        )}
       </Paper>
 
       {/* 탭 네비게이션 */}

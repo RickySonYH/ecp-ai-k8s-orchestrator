@@ -74,6 +74,8 @@ import ManifestPreviewTest from './components/ManifestPreviewTest.tsx';
 import Dashboard from './components/DemoDashboard.tsx';
 import { SettingsTab } from './components/SettingsTab.tsx';
 import ModeSelector from './components/ModeSelector.tsx';
+import TenantManager from './components/TenantManager.tsx';
+import TenantDataServiceFactory, { TenantDataServiceInterface, SystemMetrics as ServiceSystemMetrics } from './services/TenantDataService.ts';
 
 // 타입 정의
 interface DeploymentStatus {
@@ -97,9 +99,11 @@ interface TenantSummary {
 
 interface SystemMetrics {
   total_tenants: number;
+  active_tenants: number;
   total_services: number;
-  total_gpu_usage: number;
-  total_cpu_usage: number;
+  total_allocated_gpus: number;  // [advice from AI] 할당된 GPU 총 개수
+  total_allocated_cpus: number;  // [advice from AI] 할당된 CPU 총 코어 수
+  total_memory_allocated: string; // [advice from AI] 할당된 메모리 총량 (예: "128Gi")
   system_health: 'healthy' | 'warning' | 'critical';
 }
 
@@ -182,24 +186,53 @@ function App() {
   // [advice from AI] 테넌시 목록 로딩 상태 추가
   const [tenantsLoading, setTenantsLoading] = useState(false);
 
+  // [advice from AI] 통합 데이터 서비스 인스턴스
+  const [dataService, setDataService] = useState<TenantDataServiceInterface | null>(null);
+
   // [advice from AI] 모드 선택 상태 관리 - 초기 선택 화면과 데모 모드 상태
   const [modeSelected, setModeSelected] = useState(() => {
-    // 로컬 스토리지에서 모드 선택 여부 확인
-    return localStorage.getItem('ecp-ai-mode-selected') === 'true';
+    // [advice from AI] 임시로 항상 모드 선택 화면 표시 (디버깅용)
+    console.log('모드 선택 상태 초기화: false (항상 모드 선택 화면 표시)');
+    return false;
+    
+    // 원래 코드 (주석 처리)
+    // try {
+    //   return localStorage.getItem('ecp-ai-mode-selected') === 'true';
+    // } catch (error) {
+    //   console.warn('로컬 스토리지 접근 실패, 기본값 사용:', error);
+    //   return false; // 기본적으로 모드 선택 화면 표시
+    // }
   });
   
   const [isDemoMode, setIsDemoMode] = useState(() => {
     // 로컬 스토리지에서 저장된 데모 모드 설정 불러오기
-    const savedDemoMode = localStorage.getItem('ecp-ai-demo-mode');
-    return savedDemoMode !== null ? JSON.parse(savedDemoMode) : true; // 기본값은 데모 모드
+    try {
+      const savedDemoMode = localStorage.getItem('ecp-ai-demo-mode');
+      return savedDemoMode !== null ? JSON.parse(savedDemoMode) : true; // 기본값은 데모 모드
+    } catch (error) {
+      console.warn('로컬 스토리지 접근 실패, 데모 모드로 설정:', error);
+      return true; // 기본값은 데모 모드
+    }
   });
 
   // [advice from AI] 초기 모드 선택 핸들러
   const handleModeSelect = (isDemoModeSelected: boolean) => {
+    console.log('모드 선택:', isDemoModeSelected ? '데모 모드' : '실사용 모드'); // 디버깅용
+    
     setIsDemoMode(isDemoModeSelected);
     setModeSelected(true);
-    localStorage.setItem('ecp-ai-demo-mode', JSON.stringify(isDemoModeSelected));
-    localStorage.setItem('ecp-ai-mode-selected', 'true');
+    
+    try {
+      localStorage.setItem('ecp-ai-demo-mode', JSON.stringify(isDemoModeSelected));
+      localStorage.setItem('ecp-ai-mode-selected', 'true');
+    } catch (error) {
+      console.warn('로컬 스토리지 저장 실패:', error);
+    }
+    
+    // 데이터 서비스 인스턴스 생성
+    const service = TenantDataServiceFactory.create(isDemoModeSelected);
+    setDataService(service);
+    
     // 모드 선택 후 테넌시 목록 로드
     fetchTenants();
   };
@@ -208,6 +241,11 @@ function App() {
   const handleDemoModeChange = (demoMode: boolean) => {
     setIsDemoMode(demoMode);
     localStorage.setItem('ecp-ai-demo-mode', JSON.stringify(demoMode));
+    
+    // 데이터 서비스 인스턴스 재생성
+    const service = TenantDataServiceFactory.create(demoMode);
+    setDataService(service);
+    
     // 데모 모드 변경 시 테넌시 목록 다시 로드
     fetchTenants();
   };
@@ -407,27 +445,14 @@ function App() {
     }
   ];
 
-  // [advice from AI] 테넌시 목록 조회 함수 (데모 모드에 따라 분기)
+  // [advice from AI] 통합 데이터 서비스를 사용한 테넌시 목록 조회
   const fetchTenants = async () => {
+    if (!dataService) return;
+    
     try {
       setTenantsLoading(true);
-      
-      if (isDemoMode) {
-        // 데모 모드: 하드코딩된 데모 데이터 반환
-        setTenantList(demoTenants);
-        return;
-      }
-      
-      // 실제 모드: DB에서 데이터 조회
-      const response = await fetch('http://localhost:8001/api/v1/tenants/');
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: 테넌시 목록 조회 실패`);
-      }
-      
-      const data = await response.json();
-      setTenantList(data.tenants || []);
-      
+      const tenants = await dataService.getTenants();
+      setTenantList(tenants);
     } catch (error) {
       console.error('테넌시 목록 조회 실패:', error);
       // 에러 발생 시 빈 배열로 설정
@@ -437,14 +462,24 @@ function App() {
     }
   };
 
-  // [advice from AI] 컴포넌트 마운트 시 테넌시 목록 조회
+  // [advice from AI] 초기 데이터 서비스 설정
   useEffect(() => {
-    fetchTenants();
-    
-    // 주기적 업데이트 (1분마다)
-    const interval = setInterval(fetchTenants, 60000);
-    return () => clearInterval(interval);
-  }, [isDemoMode]); // isDemoMode가 변경될 때마다 다시 로드
+    if (modeSelected && !dataService) {
+      const service = TenantDataServiceFactory.create(isDemoMode);
+      setDataService(service);
+    }
+  }, [modeSelected, isDemoMode, dataService]);
+
+  // [advice from AI] 데이터 서비스 변경 시 테넌시 목록 조회
+  useEffect(() => {
+    if (dataService) {
+      fetchTenants();
+      
+      // 주기적 업데이트 (1분마다)
+      const interval = setInterval(fetchTenants, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [dataService]);
 
   // [advice from AI] 모던 테마 생성 - 더 현대적인 색상 팔레트 적용
   const theme = createTheme({
@@ -503,7 +538,7 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // 테넌시 생성 완료 핸들러
+  // [advice from AI] 통합 데이터 서비스를 사용한 테넌시 생성 완료 핸들러
   const handleTenantCreated = (result: DeploymentStatus) => {
     if (result.success) {
       setCreatedTenants(prev => [...prev, result.tenant_id]);
@@ -514,7 +549,7 @@ function App() {
       // 대시보드 탭으로 이동
       setCurrentTab(1);
       
-      // 테넌시 목록 새로고침
+      // 테넌시 목록 새로고침 (새로 생성된 테넌트 포함)
       fetchTenants();
     }
   };
@@ -552,18 +587,59 @@ function App() {
     }
   };
 
-  // 시스템 메트릭 조회
+  // 시스템 메트릭 조회 - 테넌트 기반 종합 현황
   const fetchSystemMetrics = async () => {
     try {
-      // 실제 구현에서는 시스템 전체 메트릭 API 호출
-      const mockMetrics: SystemMetrics = {
+      // [advice from AI] 테넌트 리스트 기반으로 실제 리소스 계산
+      const activeTenants = tenantList.filter(t => t.status === 'running' || t.status === 'active');
+      
+      // 테넌트별 예상 리소스 계산 (실제로는 각 테넌트의 spec에서 가져와야 함)
+      let totalGpus = 0;
+      let totalCpus = 0;
+      let totalMemoryGi = 0;
+      
+      tenantList.forEach(tenant => {
+        // 프리셋 기반 리소스 추정
+        switch (tenant.preset) {
+          case 'micro':
+            totalGpus += 1;
+            totalCpus += 4;
+            totalMemoryGi += 8;
+            break;
+          case 'small':
+            totalGpus += 2;
+            totalCpus += 8;
+            totalMemoryGi += 16;
+            break;
+          case 'medium':
+            totalGpus += 4;
+            totalCpus += 16;
+            totalMemoryGi += 32;
+            break;
+          case 'large':
+            totalGpus += 8;
+            totalCpus += 32;
+            totalMemoryGi += 64;
+            break;
+          default:
+            totalGpus += 1;
+            totalCpus += 4;
+            totalMemoryGi += 8;
+        }
+      });
+      
+      const metrics: SystemMetrics = {
         total_tenants: tenantList.length,
-        total_services: tenantList.length * 3, // 평균 3개 서비스
-        total_gpu_usage: Math.random() * 80 + 10,
-        total_cpu_usage: Math.random() * 70 + 20,
-        system_health: Math.random() > 0.8 ? 'warning' : 'healthy'
+        active_tenants: activeTenants.length,
+        total_services: tenantList.reduce((sum, tenant) => sum + tenant.services_count, 0),
+        total_allocated_gpus: totalGpus,
+        total_allocated_cpus: totalCpus,
+        total_memory_allocated: `${totalMemoryGi}Gi`,
+        system_health: activeTenants.length === tenantList.length ? 'healthy' : 
+                      activeTenants.length > tenantList.length * 0.8 ? 'warning' : 'critical'
       };
-      setSystemMetrics(mockMetrics);
+      
+      setSystemMetrics(metrics);
     } catch (error) {
       console.error('시스템 메트릭 조회 실패:', error);
     }
@@ -812,7 +888,7 @@ function App() {
                   <Card variant="outlined" sx={{ p: 1 }}>
                     <Typography variant="caption">GPU</Typography>
                     <Typography variant="h6" color="primary">
-                      {systemMetrics.total_gpu_usage.toFixed(0)}%
+                      {systemMetrics.total_allocated_gpus || 0}
                     </Typography>
                   </Card>
                 </Grid>
@@ -820,7 +896,7 @@ function App() {
                   <Card variant="outlined" sx={{ p: 1 }}>
                     <Typography variant="caption">CPU</Typography>
                     <Typography variant="h6" color="secondary">
-                      {systemMetrics.total_cpu_usage.toFixed(0)}%
+                      {systemMetrics.total_allocated_cpus || 0}
                     </Typography>
                   </Card>
                 </Grid>
@@ -840,10 +916,10 @@ function App() {
                     <DashboardIcon sx={{ mr: 2, fontSize: 40, color: 'primary.main' }} />
                     <Box>
                       <Typography variant="h4" fontWeight="bold">
-                        {systemMetrics.total_tenants}
+                        {systemMetrics.active_tenants}/{systemMetrics.total_tenants}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        활성 테넌시
+                        활성/전체 테넌트
                       </Typography>
                     </Box>
                   </CardContent>
@@ -859,7 +935,7 @@ function App() {
                         {systemMetrics.total_services}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        실행 중인 서비스
+                        배포된 서비스
                       </Typography>
                     </Box>
                   </CardContent>
@@ -872,10 +948,10 @@ function App() {
                     <MemoryIcon sx={{ mr: 2, fontSize: 40, color: 'success.main' }} />
                     <Box>
                       <Typography variant="h4" fontWeight="bold">
-                        {systemMetrics.total_gpu_usage.toFixed(0)}%
+                        {systemMetrics.total_allocated_gpus}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        전체 GPU 사용률
+                        할당된 GPU
                       </Typography>
                     </Box>
                   </CardContent>
@@ -888,10 +964,13 @@ function App() {
                     <SpeedIcon sx={{ mr: 2, fontSize: 40, color: 'warning.main' }} />
                     <Box>
                       <Typography variant="h4" fontWeight="bold">
-                        {systemMetrics.total_cpu_usage.toFixed(0)}%
+                        {systemMetrics.total_allocated_cpus}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        전체 CPU 사용률
+                        할당된 CPU 코어
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                        메모리: {systemMetrics.total_memory_allocated}
                       </Typography>
                     </Box>
                   </CardContent>
@@ -951,6 +1030,7 @@ function App() {
                 setSnackbarMessage(`테넌시 '${tenant.tenant_id}' 저장 완료!`);
                 setSnackbarOpen(true);
               }}
+              isDemoMode={isDemoMode}
             />
           </TabPanel>
 
@@ -961,15 +1041,15 @@ function App() {
 
 
           <TabPanel value={currentTab} index={2}>
-            <TenantListView 
+            <TenantManager 
+              isDemoMode={isDemoMode}
               tenants={tenantList}
-              loading={tenantsLoading}
+              onRefresh={fetchTenants}
               onTenantSelect={(tenantId) => {
                 setSelectedTenant(tenantId);
                 // 팝업 대시보드 표시를 위한 상태 설정
                 setDashboardPopupOpen(true);
               }}
-              onRefresh={fetchTenants}
             />
           </TabPanel>
 

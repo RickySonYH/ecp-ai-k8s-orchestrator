@@ -12,7 +12,8 @@ import time
 import os
 import subprocess
 from typing import Dict, Any, Optional, List
-from fastapi import APIRouter, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Depends, Header
+from typing import Optional
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, validator
 import structlog
@@ -39,12 +40,31 @@ from app.models.service_config import (
 
 # [advice from AI] 데이터베이스 모델 임포트 추가
 from app.models.database import get_db, Tenant, Service, MonitoringData, DashboardConfig
+from app.core.database_manager import db_manager
 from sqlalchemy.orm import Session
 
 logger = structlog.get_logger(__name__)
 
 # FastAPI 라우터 생성
 router = APIRouter(prefix="/tenants", tags=["tenants"])
+
+# [advice from AI] 데모 모드 헤더 처리 헬퍼 함수
+def get_db_session(x_demo_mode: Optional[str] = Header(None)):
+    """
+    헤더의 데모 모드 정보에 따라 적절한 DB 세션 반환
+    
+    Args:
+        x_demo_mode: 데모 모드 헤더 (true/false)
+    
+    Returns:
+        DB 세션 제너레이터
+    """
+    is_demo = x_demo_mode and x_demo_mode.lower() == 'true'
+    session = db_manager.get_session(is_demo)
+    try:
+        yield session
+    finally:
+        session.close()
 
 # 전역 의존성 (실제 구현에서는 Dependency Injection 사용)
 tenant_manager = None
@@ -199,7 +219,7 @@ async def create_tenant_in_db(db: Session, tenant_data: dict) -> Tenant:
 # ==========================================
 
 @router.get("/", response_model=TenantListResponse)
-async def list_tenants(db: Session = Depends(get_db)):
+async def list_tenants(db: Session = Depends(get_db_session)):
     """
     테넌시 목록 조회
     - 데이터베이스에서 테넌시 정보 조회
@@ -272,7 +292,7 @@ async def create_tenant(
     request: TenantCreateRequest,
     background_tasks: BackgroundTasks,
     tenant_mgr: TenantManager = Depends(get_tenant_manager),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     """
     테넌시 생성

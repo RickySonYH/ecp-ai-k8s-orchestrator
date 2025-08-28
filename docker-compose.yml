@@ -2,7 +2,7 @@
 version: '3.8'
 
 services:
-  # PostgreSQL 데이터베이스 - ECP-AI 테넌시 및 메트릭 데이터 저장
+  # PostgreSQL 데이터베이스 - 실사용 모드용 (운영 데이터)
   postgres:
     image: postgres:15-alpine
     container_name: ecp-postgres
@@ -24,6 +24,38 @@ services:
       - ecp-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ecp_user -d ecp_orchestrator"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQL 데모 데이터베이스 - 데모 모드 전용 (데모 데이터)
+  postgres-demo:
+    image: postgres:15-alpine
+    container_name: ecp-postgres-demo
+    environment:
+      POSTGRES_DB: ecp_orchestrator_demo
+      POSTGRES_USER: ecp_demo_user
+      POSTGRES_PASSWORD: ecp_demo_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+      POSTGRES_HOST_AUTH_METHOD: trust
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_demo_data:/var/lib/postgresql/data
+      - ./config/init-db.sql:/docker-entrypoint-initdb.d/01-init-db.sql
+      - ./config/demo-data.sql:/docker-entrypoint-initdb.d/02-demo-data.sql
+    ports:
+      - "5434:5432"
+    networks:
+      - ecp-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecp_demo_user -d ecp_orchestrator_demo"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -68,36 +100,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Server Resource Generator - 독립적인 하드웨어 계산 서비스
-  hardware-calculator:
-    build:
-      context: ../Server Resource Generator
-      dockerfile: Dockerfile
-    container_name: ecp-hardware-calculator
-    environment:
-      - PYTHONPATH=/app
-      - PYTHONUNBUFFERED=1
-      - PYTHONDONTWRITEBYTECODE=1
-    volumes:
-      - ../Server Resource Generator/app:/app/app:rw
-      - ../Server Resource Generator/logs:/app/logs:rw
-      - ./backend/config:/app/config:ro
-    ports:
-      - "2992:8000"
-    networks:
-      - ecp-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+  # Server Resource Generator는 외부 API (rdc.rickyson.com:5001) 사용으로 제거
 
   # 백엔드 API 서버 - ECP-AI 오케스트레이션 엔진 (개발 환경)
   backend:
@@ -118,6 +121,12 @@ services:
       
       # 하드웨어 계산 서비스 연결 (외부 API로 변경)
       - HARDWARE_CALCULATOR_URL=http://rdc.rickyson.com:5001
+      
+      # K8S Simulator 연동 설정 (통합된 서비스)
+      - K8S_SIMULATOR_URL=http://k8s-simulator-backend:8000
+      - K8S_SIMULATOR_WS_URL=ws://k8s-simulator-backend:8000
+      - K8S_SIMULATOR_REDIS_URL=redis://redis:6379/1  # [advice from AI] ECP Redis DB 1 사용
+      - K8S_SIMULATOR_EXTERNAL_URL=http://localhost:6360
       
       # 개발 환경 설정
       - ENVIRONMENT=development
@@ -324,15 +333,129 @@ services:
       - monitoring
     restart: unless-stopped
 
-networks:
-  ecp-network:
-    driver: bridge
-    name: ecp-ai-network
+# ==========================================
+# K8S Deployment Simulator Services
+# ==========================================
 
-# 개발 환경용 볼륨 정의
+  # K8S Simulator PostgreSQL Database
+  k8s-simulator-postgres:
+    image: postgres:15
+    container_name: k8s-simulator-db
+    environment:
+      POSTGRES_DB: k8s_simulator
+      POSTGRES_USER: k8s_user
+      POSTGRES_PASSWORD: k8s_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+    volumes:
+      - k8s_simulator_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "6350:5432"
+    networks:
+      - ecp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U k8s_user -d k8s_simulator"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # K8S Simulator Redis는 ECP Redis와 통합 (DB 1 사용)
+
+  # K8S Simulator Backend API
+  k8s-simulator-backend:
+    build:
+      context: ./k8s-simulator/backend
+      dockerfile: Dockerfile
+    container_name: k8s-simulator-backend
+    ports:
+      - "6360:8000"
+    environment:
+      - DATABASE_URL=postgresql://k8s_user:k8s_password@k8s-simulator-postgres:5432/k8s_simulator
+      - REDIS_URL=redis://redis:6379/1  # [advice from AI] ECP Redis DB 1 사용
+      - PORT=8000
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      k8s-simulator-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy  # [advice from AI] ECP Redis 사용
+    volumes:
+      - ./k8s-simulator/backend:/app:rw
+    networks:
+      - ecp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # K8S Simulator Frontend Dashboard
+  k8s-simulator-frontend:
+    build:
+      context: ./k8s-simulator/frontend
+      dockerfile: Dockerfile
+    container_name: k8s-simulator-frontend
+    ports:
+      - "6370:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:6360
+      - REACT_APP_SIMULATOR_NAME=ECP-AI K8S Simulator
+    depends_on:
+      - k8s-simulator-backend
+    volumes:
+      - ./k8s-simulator/frontend:/app:rw
+      - k8s_simulator_frontend_node_modules:/app/node_modules
+    networks:
+      - ecp-network
+    restart: unless-stopped
+
+  # K8S Simulator Monitoring Data Generator
+  k8s-simulator-monitoring:
+    build:
+      context: ./k8s-simulator/monitoring
+      dockerfile: Dockerfile
+    container_name: k8s-simulator-monitoring
+    ports:
+      - "6381:9090"  # [advice from AI] 6380은 ECP Redis와 충돌하므로 6381로 변경
+    environment:
+      - REDIS_URL=redis://redis:6379/1  # [advice from AI] ECP Redis DB 1 사용
+      - DATABASE_URL=postgresql://k8s_user:k8s_password@k8s-simulator-postgres:5432/k8s_simulator
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      k8s-simulator-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy  # [advice from AI] ECP Redis 사용
+    volumes:
+      - ./k8s-simulator/monitoring:/app:rw
+    networks:
+      - ecp-network
+    restart: unless-stopped
+
+  # K8S Simulator Nginx Reverse Proxy
+  k8s-simulator-nginx:
+    image: nginx:alpine
+    container_name: k8s-simulator-nginx
+    ports:
+      - "6390:80"
+    volumes:
+      - ./k8s-simulator/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - k8s-simulator-frontend
+      - k8s-simulator-backend
+    networks:
+      - ecp-network
+    restart: unless-stopped
+
 volumes:
   postgres_data:
     name: ecp-postgres-data
+    driver: local
+  postgres_demo_data:
+    name: ecp-postgres-demo-data
     driver: local
   redis_data:
     name: ecp-redis-data
@@ -349,3 +472,16 @@ volumes:
   grafana_data:
     name: ecp-grafana-data
     driver: local
+  # K8S Simulator volumes
+  k8s_simulator_postgres_data:
+    name: k8s-simulator-postgres-data
+    driver: local
+
+  k8s_simulator_frontend_node_modules:
+    name: k8s-simulator-frontend-node-modules
+    driver: local
+
+networks:
+  ecp-network:
+    driver: bridge
+    name: ecp-ai-network

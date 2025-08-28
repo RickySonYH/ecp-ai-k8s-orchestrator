@@ -367,6 +367,9 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
     startupProbe: { enabled: true, path: '/startup', initialDelay: 10, period: 10 }
   });
   
+  // [advice from AI] K8S Simulator 자동 설정 상태 추가
+  const [simulatorAutoSetup, setSimulatorAutoSetup] = useState(true);
+  
   // [advice from AI] 하드웨어 계산 결과 상태 추가
   const [hardwareSpec, setHardwareSpec] = useState<any>(null);
 
@@ -674,6 +677,31 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
       }
 
       const result = await response.json();
+      
+      // [advice from AI] 시뮬레이터 자동 설정이 활성화된 경우 자동 배포
+      if (simulatorAutoSetup && result.tenant_id) {
+        try {
+          const simulatorResponse = await fetch(`/api/v1/simulator/deploy/${result.tenant_id}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Demo-Mode': 'false' // 실사용 모드에서만 시뮬레이터 사용
+            }
+          });
+          
+          if (simulatorResponse.ok) {
+            const simulatorResult = await simulatorResponse.json();
+            result.simulator_deployment = simulatorResult;
+            result.monitoring_dashboard = simulatorResult.monitoring_dashboard;
+            result.websocket_url = simulatorResult.websocket_url;
+          } else {
+            console.warn('시뮬레이터 자동 배포 실패, 기본 배포는 성공');
+          }
+        } catch (error) {
+          console.warn('시뮬레이터 연동 중 오류:', error);
+        }
+      }
+      
       onDeploymentComplete(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : '배포 실행 실패');
@@ -1204,6 +1232,45 @@ export const DeploymentWizard: React.FC<DeploymentWizardProps> = ({
                 • <strong>Readiness:</strong> 트래픽 수신 준비 상태 확인<br/>
                 • <strong>Startup:</strong> 초기 시작 완료 확인
               </Typography>
+            </Alert>
+
+            {/* [advice from AI] K8S Simulator 자동 모니터링 설정 추가 */}
+            <Alert severity="info" sx={{ mb: 3 }}>
+              <AlertTitle>🚀 K8S Simulator 자동 모니터링</AlertTitle>
+              <FormControlLabel
+                control={
+                  <Switch 
+                    checked={simulatorAutoSetup}
+                    onChange={(e) => setSimulatorAutoSetup(e.target.checked)}
+                  />
+                }
+                label="K8S Simulator 데이터 생성기와 자동 연결"
+                sx={{ mb: 1 }}
+              />
+              <Typography variant="body2" color="text.secondary">
+                {simulatorAutoSetup 
+                  ? "✅ 실사용 모드 배포 시 K8S Simulator로 자동 연결되어 SLA 99.5% 모니터링 및 가상 배포 테스트가 시작됩니다."
+                  : "❌ 수동 모니터링 설정을 사용합니다. (기본 헬스체크만 적용)"}
+              </Typography>
+              {simulatorAutoSetup && (
+                <Box sx={{ mt: 2, p: 2, bgcolor: 'primary.50', borderRadius: 1 }}>
+                  <Typography variant="caption" display="block" sx={{ mb: 1 }}>
+                    <strong>자동 설정 포함 내용:</strong>
+                  </Typography>
+                  <Typography variant="caption" display="block">
+                    • 매니페스트 자동 검증 및 시뮬레이터 배포
+                  </Typography>
+                  <Typography variant="caption" display="block">
+                    • 실시간 CPU, Memory, Network 메트릭 수집
+                  </Typography>
+                  <Typography variant="caption" display="block">
+                    • SLA 99.5% 달성률 추적 및 알림
+                  </Typography>
+                  <Typography variant="caption" display="block">
+                    • 고급 모니터링 대시보드 자동 연결
+                  </Typography>
+                </Box>
+              )}
             </Alert>
             
             <Grid container spacing={3}>

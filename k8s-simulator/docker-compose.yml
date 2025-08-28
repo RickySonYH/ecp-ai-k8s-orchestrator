@@ -1,0 +1,104 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: k8s_simulator_db
+    environment:
+      POSTGRES_DB: k8s_simulator
+      POSTGRES_USER: k8s_user
+      POSTGRES_PASSWORD: k8s_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "6350:5432"
+    networks:
+      - k8s_network
+
+  # Redis for caching and real-time data
+  redis:
+    image: redis:7-alpine
+    container_name: k8s_simulator_redis
+    ports:
+      - "6351:6379"
+    networks:
+      - k8s_network
+
+  # Backend API Server
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: k8s_simulator_backend
+    ports:
+      - "6360:8000"
+    environment:
+      - DATABASE_URL=postgresql://k8s_user:k8s_password@postgres:5432/k8s_simulator
+      - REDIS_URL=redis://redis:6379
+      - PORT=8000
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+    networks:
+      - k8s_network
+
+  # Frontend Dashboard
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: k8s_simulator_frontend
+    ports:
+      - "6370:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:6360
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - k8s_network
+
+  # Monitoring Data Generator (실제 서버 모니터링 데이터 모사기)
+  monitoring_generator:
+    build:
+      context: ./monitoring
+      dockerfile: Dockerfile
+    container_name: k8s_monitoring_generator
+    ports:
+      - "6381:9090"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://k8s_user:k8s_password@postgres:5432/k8s_simulator
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./monitoring:/app
+    networks:
+      - k8s_network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: k8s_simulator_nginx
+    ports:
+      - "6390:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - k8s_network
+
+volumes:
+  postgres_data:
+
+networks:
+  k8s_network:
+    driver: bridge

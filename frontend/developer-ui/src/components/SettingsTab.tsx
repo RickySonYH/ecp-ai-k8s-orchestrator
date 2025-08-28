@@ -43,6 +43,14 @@ export interface GlobalSettings {
   kubernetes: KubernetesConfig;
   monitoring: MonitoringConfig;
   security: SecurityConfig;
+  simulator?: SimulatorConfig; // [advice from AI] 시뮬레이터 설정 (선택적)
+}
+
+interface SimulatorConfig {
+  enabled: boolean;
+  url: string;
+  useForRealMode: boolean; // [advice from AI] 실사용 모드에서 시뮬레이터 사용 여부
+  autoAdvancedMonitoring: boolean; // [advice from AI] 고급 모니터링 자동 연결
 }
 
 export interface GitConfig {
@@ -68,6 +76,18 @@ export interface KubernetesConfig {
     memory: string;
     storage: string;
   };
+  // [advice from AI] 배포 방식 및 검증 설정 추가
+  deploymentMethod: 'direct' | 'argocd' | 'helm' | 'webhook' | 'k8s-simulator';
+  deploymentEndpoint: string;
+  deploymentAuth: {
+    type: 'bearer' | 'basic' | 'certificate';
+    token?: string;
+    username?: string;
+    password?: string;
+  };
+  validationStrict: boolean;
+  simulatorUrl?: string;
+  useSimulatorForRealMode: boolean; // [advice from AI] 실사용 모드에서 시뮬레이터 사용 여부
 }
 
 export interface MonitoringConfig {
@@ -75,6 +95,13 @@ export interface MonitoringConfig {
   grafanaUrl: string;
   alertChannels: string[];
   metricsRetention: number;
+  // [advice from AI] 모니터링 시스템 표준 연동 설정
+  monitoringStack: 'prometheus-grafana' | 'datadog' | 'newrelic' | 'custom';
+  customApiEndpoint?: string;
+  apiKey?: string;
+  dataCollectionInterval: number;
+  slaTarget: number; // 99.5% 등
+  realTimeMonitoring: boolean;
 }
 
 export interface SecurityConfig {
@@ -157,6 +184,12 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ isDemoMode, onDemoMode
       vulnerabilityScanner: 'trivy',
       autoBlockVulnerabilities: true,
       auditLogRetention: 90
+    },
+    simulator: {
+      enabled: true,
+      url: 'http://localhost:6360',
+      useForRealMode: true, // [advice from AI] 실사용 모드에서 시뮬레이터 사용
+      autoAdvancedMonitoring: true // [advice from AI] 고급 모니터링 자동 연결
     }
   });
 
@@ -285,6 +318,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ isDemoMode, onDemoMode
               } 
               {...a11yProps(4)} 
             />
+            <Tab 
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <PlayArrow />
+                  <span>시뮬레이터</span>
+                </Box>
+              } 
+              {...a11yProps(5)} 
+            />
           </Tabs>
         </Box>
 
@@ -329,8 +371,142 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ isDemoMode, onDemoMode
               onChange={(config) => handleSettingsChange('security', config)}
             />
           </TabPanel>
+
+          <TabPanel value={currentTab} index={5}>
+            {/* [advice from AI] 시뮬레이터 설정 패널 */}
+            <SimulatorSettings 
+              config={settings.simulator}
+              demoMode={settings.demoMode}
+              onChange={(config) => handleSettingsChange('simulator', config)}
+            />
+          </TabPanel>
         </Box>
       </Paper>
+    </Box>
+  );
+};
+
+// [advice from AI] 시뮬레이터 설정 컴포넌트
+const SimulatorSettings = ({ config, demoMode, onChange }) => {
+  const [simulatorStatus, setSimulatorStatus] = useState(null);
+
+  useEffect(() => {
+    checkSimulatorHealth();
+  }, []);
+
+  const checkSimulatorHealth = async () => {
+    try {
+      const response = await fetch('/api/v1/simulator/health');
+      const data = await response.json();
+      setSimulatorStatus(data);
+    } catch (error) {
+      setSimulatorStatus({ status: 'error', message: '연결 실패' });
+    }
+  };
+
+  return (
+    <Box sx={{ p: 2 }}>
+      <Typography variant="h6" gutterBottom>
+        K8S Deployment Simulator 설정
+      </Typography>
+      
+      <Alert severity="info" sx={{ mb: 3 }}>
+        실사용 모드에서 매니페스트 배포 시 K8S Simulator로 자동 연결되어 가상 배포 및 SLA 99.5% 모니터링을 수행합니다.
+      </Alert>
+
+      {/* 시뮬레이터 상태 */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="subtitle1" gutterBottom>
+            시뮬레이터 연결 상태
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Chip 
+              label={simulatorStatus?.status === 'healthy' ? '정상' : '오프라인'}
+              color={simulatorStatus?.status === 'healthy' ? 'success' : 'error'}
+              size="small"
+            />
+            <Typography variant="body2" color="text.secondary">
+              {simulatorStatus?.message || '상태 확인 중...'}
+            </Typography>
+            <Button size="small" onClick={checkSimulatorHealth}>
+              새로고침
+            </Button>
+          </Box>
+          {simulatorStatus?.status === 'healthy' && (
+            <Box sx={{ mt: 2 }}>
+              <Button 
+                variant="outlined" 
+                size="small"
+                onClick={() => window.open('http://localhost:6360/docs', '_blank')}
+              >
+                API 문서 보기
+              </Button>
+              <Button 
+                variant="outlined" 
+                size="small" 
+                sx={{ ml: 1 }}
+                onClick={() => window.open('http://localhost:6360', '_blank')}
+              >
+                시뮬레이터 대시보드
+              </Button>
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 기본 설정 */}
+      <FormControlLabel
+        control={
+          <Switch
+            checked={config?.enabled || false}
+            onChange={(e) => onChange({ ...config, enabled: e.target.checked })}
+          />
+        }
+        label="시뮬레이터 사용"
+      />
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={config?.useForRealMode || false}
+            onChange={(e) => onChange({ ...config, useForRealMode: e.target.checked })}
+            disabled={demoMode} // 데모 모드에서는 비활성화
+          />
+        }
+        label="실사용 모드에서 시뮬레이터 사용"
+      />
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={config?.autoAdvancedMonitoring || false}
+            onChange={(e) => onChange({ ...config, autoAdvancedMonitoring: e.target.checked })}
+          />
+        }
+        label="고급 모니터링 자동 연결"
+      />
+
+      <TextField
+        fullWidth
+        label="시뮬레이터 URL"
+        value={config?.url || ''}
+        onChange={(e) => onChange({ ...config, url: e.target.value })}
+        sx={{ mt: 2, mb: 2 }}
+        helperText="K8S Deployment Simulator API 엔드포인트"
+      />
+
+      {demoMode && (
+        <Alert severity="warning" sx={{ mt: 2 }}>
+          현재 데모 모드입니다. 시뮬레이터는 실사용 모드에서만 활성화됩니다.
+        </Alert>
+      )}
+
+      {!demoMode && config?.useForRealMode && (
+        <Alert severity="success" sx={{ mt: 2 }}>
+          매니페스트 배포 시 자동으로 K8S Simulator로 연결되어 가상 배포 및 실시간 모니터링이 시작됩니다.
+        </Alert>
+      )}
     </Box>
   );
 };

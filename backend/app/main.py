@@ -22,6 +22,8 @@ import structlog
 from app.api.v1.tenants import router as tenants_router
 from app.api.v1.images import router as images_router
 from app.api.v1.image_management import router as image_management_router
+from app.api.v1.simulator_integration import router as simulator_router  # [advice from AI] 시뮬레이터 라우터 추가
+
 # from app.core.tenant_manager import TenantManager
 # from app.core.resource_calculator import ResourceCalculator  
 # from app.core.k8s_orchestrator import K8sOrchestrator
@@ -117,8 +119,10 @@ app.add_middleware(
 
 # API 라우터 등록
 app.include_router(tenants_router, prefix="/api/v1")
-app.include_router(images_router, prefix="/api/v1")
+app.include_router(images_router, prefix="/api/v1") 
 app.include_router(image_management_router, prefix="/api/v1")
+app.include_router(simulator_router, prefix="/api/v1", tags=["simulator"])  # [advice from AI] 시뮬레이터 라우터 등록
+
 
 
 # 헬스 체크 엔드포인트

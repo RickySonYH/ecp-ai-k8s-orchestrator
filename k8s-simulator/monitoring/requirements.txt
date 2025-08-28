@@ -1,0 +1,13 @@
+# [advice from AI] 모니터링 데이터 생성기 의존성 패키지들
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+redis==5.0.1
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.23
+pydantic==2.5.0
+asyncio-mqtt==0.16.1
+prometheus-client==0.19.0
+structlog==23.2.0
+numpy==1.24.3
+pandas==2.0.3
+schedule==1.2.0
