@@ -179,7 +179,7 @@ async def get_tenants_from_db(db: Session) -> List[TenantSummary]:
         
         for tenant in tenants:
             # 서비스 개수 계산
-            services_count = db.query(Service).filter(Service.tenant_id == tenant.id).count()
+            services_count = db.query(Service).filter(Service.tenant_id == tenant.tenant_id).count()
             
             tenant_summary = TenantSummary(
                 tenant_id=tenant.tenant_id,
@@ -383,47 +383,76 @@ async def create_tenant(
         # 4. 데이터베이스에 테넌시 정보 저장
         tenant_data = {
             "tenant_id": request.tenant_id,
-            "name": f"테넌시 {request.tenant_id}",
+            "name": request.name if hasattr(request, 'name') and request.name else f"테넌시 {request.tenant_id}",
             "preset": tenant_specs.preset,
             "is_demo": False,  # 새로 생성되는 테넌시는 운영용
             "status": "pending",
-            "cpu_limit": comprehensive_requirements.get("cpu_limit", "8000m"),
-            "memory_limit": comprehensive_requirements.get("memory_limit", "16Gi"),
-            "gpu_limit": comprehensive_requirements.get("gpu_limit", 3),
-            "storage_limit": comprehensive_requirements.get("storage_limit", "1.0TB"),
+            "description": request.description if hasattr(request, 'description') and request.description else f"ECP-AI 테넌시 {request.tenant_id}",
+            # [advice from AI] 필수 NOT NULL 필드들 추가
+            "service_requirements": request.service_requirements.model_dump(),
+            "resources": {
+                "cpu": comprehensive_requirements.cpu,
+                "memory": comprehensive_requirements.memory,
+                "gpu": comprehensive_requirements.gpu,
+                "storage": comprehensive_requirements.storage
+            },
+            "sla_target": {
+                "availability": "99.3%",
+                "response_time": "<300ms"
+            },
+            # 리소스 제한 정보
+            "cpu_limit": f"{int(comprehensive_requirements.cpu.get('total', 8) * 1000)}m",
+            "memory_limit": comprehensive_requirements.memory.get("system_ram_gb", "16") + "Gi",
+            "gpu_limit": comprehensive_requirements.gpu.get("total", 3),
+            "storage_limit": comprehensive_requirements.storage.get("total_tb", "1.0") + "TB",
             "gpu_type": request.gpu_type,
             "sla_availability": "99.3%",
             "sla_response_time": "<300ms",
-            "description": f"ECP-AI 테넌시 {request.tenant_id}"
+            "k8s_namespace": f"tenant-{request.tenant_id}",
+            "created_by": "api_user",
+            "monitoring_enabled": True,
+            "auto_scaling_enabled": False,
+            "backup_enabled": False
         }
         
-        tenant = await create_tenant_in_db(db, tenant_data)
-        
-        # 5. 서비스 정보 저장
-        services_data = []
-        for service_name, count in request.service_requirements.model_dump().items():
-            if count > 0:
-                service_data = {
-                    "tenant_id": tenant.id,
-                    "service_name": service_name,
-                    "service_type": "ai_service",
-                    "enabled": True,
-                    "count": count,
-                    "min_replicas": 2,
-                    "max_replicas": 8,
-                    "target_cpu": 60,
-                    "image_name": f"ecp-ai/{service_name}",
-                    "image_tag": "latest",
-                    "cpu_request": "100m",
-                    "memory_request": "256Mi"
-                }
-                services_data.append(service_data)
-        
-        for service_data in services_data:
-            service = Service(**service_data)
-            db.add(service)
-        
-        db.commit()
+        # 4-5. 하나의 트랜잭션으로 테넌트와 서비스 모두 생성
+        try:
+            # 테넌트 생성
+            tenant = Tenant(**tenant_data)
+            db.add(tenant)
+            db.flush()  # ID 생성을 위해 flush (commit 전)
+            
+            # 서비스 정보 저장
+            services_created = 0
+            for service_name, count in request.service_requirements.model_dump().items():
+                if count > 0:
+                    service_data = {
+                        "tenant_id": tenant.tenant_id,  # 문자열 tenant_id 사용
+                        "service_name": service_name,
+                        "service_type": "ai_service",
+                        "enabled": True,
+                        "count": count,
+                        "min_replicas": max(1, count // 3),  # 동적 최소 레플리카
+                        "max_replicas": count * 2,  # 동적 최대 레플리카
+                        "target_cpu": 60,
+                        "image_name": f"ecp-ai/{service_name}",
+                        "image_tag": "latest",
+                        "cpu_request": "100m",
+                        "memory_request": "256Mi",
+                        "gpu_request": 0
+                    }
+                    service = Service(**service_data)
+                    db.add(service)
+                    services_created += 1
+            
+            # 모든 변경사항을 한번에 커밋
+            db.commit()
+            logger.info(f"테넌시 '{request.tenant_id}' 및 {services_created}개 서비스 생성 완료")
+            
+        except Exception as e:
+            logger.error(f"테넌시/서비스 생성 실패: {e}")
+            db.rollback()
+            raise
         
         # 6. 응답 생성
         response = TenantCreateResponse(
@@ -433,20 +462,20 @@ async def create_tenant(
             estimated_resources=ResourceEstimation(
                 gpu={
                     "type": request.gpu_type,
-                    "count": comprehensive_requirements.get("gpu_limit", 3),
-                    "memory_gb": comprehensive_requirements.get("gpu_memory_gb", 42.06)
+                    "count": comprehensive_requirements.gpu.get("total", 3),
+                    "memory_gb": float(comprehensive_requirements.memory.get("gpu_ram_gb", "42"))
                 },
                 cpu={
-                    "cores": comprehensive_requirements.get("cpu_cores", 31),
+                    "cores": comprehensive_requirements.cpu.get("total", 31),
                     "usage_percent": 65.2
                 },
                 memory={
-                    "total": comprehensive_requirements.get("memory_limit", "16Gi"),
-                    "usage_percent": 72.1
+                    "total": comprehensive_requirements.memory.get("system_ram_gb", "16") + "Gi",
+                    "usage_percent": "72.1"
                 },
                 storage={
-                    "total": comprehensive_requirements.get("storage_limit", "1.0TB"),
-                    "usage_percent": 45.8
+                    "total": comprehensive_requirements.storage.get("total_tb", "1.0") + "TB",
+                    "usage_percent": "45.8"
                 }
             ),
             deployment_status="created",

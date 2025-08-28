@@ -43,6 +43,11 @@ class Tenant(Base):
     is_demo = Column(Boolean, default=False, nullable=False)  # 데모/운영 구분
     status = Column(String(50), default="active")  # active, inactive, deleted
     
+    # 서비스 요구사항 및 리소스 정보 (JSON 형태로 저장)
+    service_requirements = Column(JSON, nullable=False)  # {"callbot": 10, "chatbot": 50, "advisor": 3}
+    resources = Column(JSON, nullable=False)  # 계산된 리소스 요구사항
+    sla_target = Column(JSON, nullable=False)  # SLA 목표치
+    
     # 리소스 제한
     cpu_limit = Column(String(50), nullable=True)
     memory_limit = Column(String(50), nullable=True)
@@ -53,6 +58,25 @@ class Tenant(Base):
     # SLA 정보
     sla_availability = Column(String(20), nullable=True)
     sla_response_time = Column(String(20), nullable=True)
+    
+    # 매니페스트 및 배포 정보
+    manifest_content = Column(Text, nullable=True)
+    manifest_generated_at = Column(DateTime(timezone=True), nullable=True)
+    deployment_config = Column(JSON, nullable=True)
+    k8s_namespace = Column(String(100), nullable=True)
+    external_endpoints = Column(JSON, nullable=True)
+    
+    # 운영 설정
+    monitoring_enabled = Column(Boolean, default=True)
+    auto_scaling_enabled = Column(Boolean, default=False)
+    backup_enabled = Column(Boolean, default=False)
+    security_policies = Column(JSON, nullable=True)
+    network_policies = Column(JSON, nullable=True)
+    resource_quotas = Column(JSON, nullable=True)
+    environment_variables = Column(JSON, nullable=True)
+    health_check_config = Column(JSON, nullable=True)
+    logging_config = Column(JSON, nullable=True)
+    metrics_config = Column(JSON, nullable=True)
     
     # 메타데이터
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -76,7 +100,7 @@ class Service(Base):
     __tablename__ = "services"
     
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    tenant_id = Column(String(100), ForeignKey("tenants.tenant_id"), nullable=False)
     service_name = Column(String(100), nullable=False)  # callbot, chatbot, advisor
     service_type = Column(String(50), nullable=False)  # ai_service, infrastructure
     
@@ -122,7 +146,7 @@ class MonitoringData(Base):
     __tablename__ = "monitoring_data"
     
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    tenant_id = Column(String(100), ForeignKey("tenants.tenant_id"), nullable=False)
     service_id = Column(Integer, ForeignKey("services.id"), nullable=True)
     
     # 메트릭 타입 구분
@@ -155,7 +179,7 @@ class DashboardConfig(Base):
     __tablename__ = "dashboard_configs"
     
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    tenant_id = Column(String(100), ForeignKey("tenants.tenant_id"), nullable=False)
     
     # 대시보드 기본 정보
     dashboard_name = Column(String(200), nullable=False)

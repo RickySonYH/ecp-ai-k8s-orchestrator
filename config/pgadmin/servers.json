@@ -1,0 +1,49 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "ECP Orchestrator (운영 DB)",
+      "Group": "ECP-AI Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "ecp_orchestrator",
+      "Username": "ecp_user",
+      "SSLMode": "prefer",
+      "Comment": "ECP-AI 메인 운영 데이터베이스 - 테넌시, 서비스, 모니터링 데이터",
+      "DBRestriction": "ecp_orchestrator",
+      "PassFile": "/var/lib/pgadmin/.pgpass",
+      "Shared": false,
+      "BGColor": "#007bff",
+      "FGColor": "#ffffff"
+    },
+    "2": {
+      "Name": "ECP Demo (데모 DB)",
+      "Group": "ECP-AI Servers", 
+      "Host": "postgres-demo",
+      "Port": 5432,
+      "MaintenanceDB": "ecp_orchestrator_demo",
+      "Username": "ecp_demo_user",
+      "SSLMode": "prefer",
+      "Comment": "ECP-AI 데모 데이터베이스 - 시연용 테넌시 및 샘플 데이터",
+      "DBRestriction": "ecp_orchestrator_demo",
+      "PassFile": "/var/lib/pgadmin/.pgpass",
+      "Shared": false,
+      "BGColor": "#28a745",
+      "FGColor": "#ffffff"
+    },
+    "3": {
+      "Name": "K8S Simulator",
+      "Group": "ECP-AI Servers",
+      "Host": "k8s-simulator-postgres", 
+      "Port": 5432,
+      "MaintenanceDB": "k8s_simulator",
+      "Username": "k8s_user",
+      "SSLMode": "prefer",
+      "Comment": "Kubernetes 시뮬레이터 데이터베이스 - 가상 클러스터 및 배포 정보",
+      "DBRestriction": "k8s_simulator",
+      "PassFile": "/var/lib/pgadmin/.pgpass",
+      "Shared": false,
+      "BGColor": "#ffc107",
+      "FGColor": "#212529"
+    }
+  }
+}

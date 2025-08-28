@@ -447,6 +447,49 @@ services:
       - ecp-network
     restart: unless-stopped
 
+# ==========================================
+# Database Management Tools
+# ==========================================
+
+  # pgAdmin - PostgreSQL 웹 관리 도구
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: ecp-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@ecp-ai.com
+      PGADMIN_DEFAULT_PASSWORD: ecp-admin-2024
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+      # [advice from AI] 데이터베이스 서버 자동 인증을 위한 환경변수
+      PGADMIN_CONFIG_UPGRADE_CHECK_ENABLED: 'False'
+      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: 10
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./config/pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - ./config/pgadmin/pgpass:/var/lib/pgadmin/.pgpass:ro
+    ports:
+      - "5050:80"  # pgAdmin 웹 인터페이스
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-demo:
+        condition: service_healthy
+      k8s-simulator-postgres:
+        condition: service_healthy
+    networks:
+      - ecp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/misc/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   postgres_data:
     name: ecp-postgres-data
@@ -476,6 +519,11 @@ volumes:
 
   k8s_simulator_frontend_node_modules:
     name: k8s-simulator-frontend-node-modules
+    driver: local
+
+  # pgAdmin volume
+  pgadmin_data:
+    name: ecp-pgadmin-data
     driver: local
 
 networks:

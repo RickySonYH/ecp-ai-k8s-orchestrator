@@ -1,0 +1,14 @@
+# PostgreSQL 자동 인증 파일
+# 형식: hostname:port:database:username:password
+
+# ECP 운영 데이터베이스
+postgres:5432:ecp_orchestrator:ecp_user:ecp_password
+postgres:5432:*:ecp_user:ecp_password
+
+# ECP 데모 데이터베이스  
+postgres-demo:5432:ecp_orchestrator_demo:ecp_demo_user:ecp_demo_password
+postgres-demo:5432:*:ecp_demo_user:ecp_demo_password
+
+# K8S Simulator 데이터베이스
+k8s-simulator-postgres:5432:k8s_simulator:k8s_user:k8s_password
+k8s-simulator-postgres:5432:*:k8s_user:k8s_password
