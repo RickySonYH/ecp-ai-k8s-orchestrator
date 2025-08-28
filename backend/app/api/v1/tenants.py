@@ -28,7 +28,8 @@ from app.core.manifest_generator import ManifestGenerator
 from app.models.tenant_specs import (
     TenantSpecs, TenantCreateRequest, ServiceRequirements,
     PresetType, GPUType, EnvironmentVariable, VolumeMount,
-    HealthCheckConfig, NetworkConfig, KubernetesAdvancedConfig
+    HealthCheckConfig, NetworkConfig, KubernetesAdvancedConfig,
+    TenantMetrics
 )
 from app.core.ecp_calculator_adapter import ECPCalculatorAdapter
 from app.models.service_config import (

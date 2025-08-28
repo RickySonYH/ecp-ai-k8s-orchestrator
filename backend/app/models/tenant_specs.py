@@ -409,3 +409,13 @@ class TenantStatusResponse(BaseModel):
     specs: TenantSpecs = Field(..., description="테넌시 사양")
     created_at: str = Field(..., description="생성 시간")
     namespace: str = Field(..., description="Kubernetes 네임스페이스")
+
+
+class TenantMetrics(BaseModel):
+    """테넌시 메트릭 정보"""
+    tenant_id: str = Field(..., description="테넌시 ID")
+    cpu_usage: float = Field(..., description="CPU 사용률 (%)")
+    memory_usage: float = Field(..., description="메모리 사용률 (%)")
+    gpu_usage: float = Field(..., description="GPU 사용률 (%)")
+    network_io: Dict[str, float] = Field(..., description="네트워크 I/O (rx/tx MB/s)")
+    active_connections: int = Field(..., description="활성 연결 수")

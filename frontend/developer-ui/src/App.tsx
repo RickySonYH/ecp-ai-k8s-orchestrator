@@ -41,7 +41,8 @@ import {
   DialogTitle,
   DialogContent,
   CircularProgress,
-  Chip
+  Chip,
+  alpha
 } from '@mui/material';
 import {
   Brightness4 as DarkModeIcon,
@@ -58,7 +59,9 @@ import {
   CloudQueue as CloudIcon,
   Memory as MemoryIcon,
   Speed as SpeedIcon,
-  Build as BuildIcon
+  Build as BuildIcon,
+  PlayArrow as DemoIcon,
+  Rocket as ProductionIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
@@ -70,6 +73,7 @@ import CICDManagement from './components/CICDManagement.tsx';
 import ManifestPreviewTest from './components/ManifestPreviewTest.tsx';
 import Dashboard from './components/DemoDashboard.tsx';
 import { SettingsTab } from './components/SettingsTab.tsx';
+import ModeSelector from './components/ModeSelector.tsx';
 
 // 타입 정의
 interface DeploymentStatus {
@@ -178,14 +182,29 @@ function App() {
   // [advice from AI] 테넌시 목록 로딩 상태 추가
   const [tenantsLoading, setTenantsLoading] = useState(false);
 
-  // [advice from AI] 데모 모드 상태 관리 - 로컬 스토리지와 연동
+  // [advice from AI] 모드 선택 상태 관리 - 초기 선택 화면과 데모 모드 상태
+  const [modeSelected, setModeSelected] = useState(() => {
+    // 로컬 스토리지에서 모드 선택 여부 확인
+    return localStorage.getItem('ecp-ai-mode-selected') === 'true';
+  });
+  
   const [isDemoMode, setIsDemoMode] = useState(() => {
     // 로컬 스토리지에서 저장된 데모 모드 설정 불러오기
     const savedDemoMode = localStorage.getItem('ecp-ai-demo-mode');
     return savedDemoMode !== null ? JSON.parse(savedDemoMode) : true; // 기본값은 데모 모드
   });
 
-  // [advice from AI] 데모 모드 변경 시 로컬 스토리지에 저장
+  // [advice from AI] 초기 모드 선택 핸들러
+  const handleModeSelect = (isDemoModeSelected: boolean) => {
+    setIsDemoMode(isDemoModeSelected);
+    setModeSelected(true);
+    localStorage.setItem('ecp-ai-demo-mode', JSON.stringify(isDemoModeSelected));
+    localStorage.setItem('ecp-ai-mode-selected', 'true');
+    // 모드 선택 후 테넌시 목록 로드
+    fetchTenants();
+  };
+
+  // [advice from AI] 데모 모드 변경 시 로컬 스토리지에 저장 (헤더에서 모드 변경용)
   const handleDemoModeChange = (demoMode: boolean) => {
     setIsDemoMode(demoMode);
     localStorage.setItem('ecp-ai-demo-mode', JSON.stringify(demoMode));
@@ -581,6 +600,16 @@ function App() {
     }
   }, []);
 
+  // [advice from AI] 모드 미선택 시 모드 선택 화면 표시
+  if (!modeSelected) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <ModeSelector onModeSelect={handleModeSelect} />
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -601,6 +630,41 @@ function App() {
             <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
               ECP-AI Kubernetes Orchestrator
             </Typography>
+            
+            {/* [advice from AI] 현재 모드 표시 및 변경 버튼 */}
+            <Tooltip title="현재 사용 모드 (클릭하여 변경)">
+              <Chip
+                icon={isDemoMode ? <DemoIcon /> : <ProductionIcon />}
+                label={isDemoMode ? "데모 모드" : "실사용 모드"}
+                color={isDemoMode ? "secondary" : "primary"}
+                variant="outlined"
+                clickable
+                onClick={() => {
+                  const newMode = !isDemoMode;
+                  if (window.confirm(
+                    `${newMode ? '데모 모드' : '실사용 모드'}로 변경하시겠습니까?\n\n` +
+                    `${newMode 
+                      ? '데모 모드: 가상 데이터로 안전하게 기능을 체험할 수 있습니다.' 
+                      : '실사용 모드: 실제 Kubernetes 클러스터에 연결하여 진짜 테넌시를 관리합니다.'
+                    }`
+                  )) {
+                    handleDemoModeChange(newMode);
+                  }
+                }}
+                sx={{
+                  mr: 2,
+                  fontWeight: 'medium',
+                  '& .MuiChip-icon': {
+                    fontSize: '1.2rem'
+                  },
+                  '&:hover': {
+                    backgroundColor: isDemoMode 
+                      ? alpha(theme.palette.secondary.main, 0.1) 
+                      : alpha(theme.palette.primary.main, 0.1),
+                  }
+                }}
+              />
+            </Tooltip>
             
             {/* 시스템 상태 표시 */}
             {systemMetrics && (

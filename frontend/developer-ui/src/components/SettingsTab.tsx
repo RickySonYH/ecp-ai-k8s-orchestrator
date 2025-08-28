@@ -2,8 +2,8 @@
 /**
  * ECP-AI Kubernetes Orchestrator 설정 탭
  * - Git, CI/CD, Kubernetes, 모니터링, 보안 설정 관리
- * - 데모 모드와 실제 모드 전환
  * - 초보자를 위한 상세한 설명과 예시 제공
+ * - 모드 전환은 헤더에서 관리됨
  */
 
 import React, { useState, useEffect } from 'react';
@@ -165,18 +165,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ isDemoMode, onDemoMode
     setSettings(prev => ({ ...prev, demoMode: isDemoMode }));
   }, [isDemoMode]);
 
-  // [advice from AI] 데모 모드 변경 핸들러 - App.tsx의 상태와 동기화
-  const handleDemoModeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const newDemoMode = event.target.checked;
-    
-    // 로컬 설정 업데이트
-    setSettings(prev => ({ ...prev, demoMode: newDemoMode }));
-    
-    // 부모 컴포넌트에 데모 모드 변경 알림
-    if (onDemoModeChange) {
-      onDemoModeChange(newDemoMode);
-    }
-  };
+  // [advice from AI] 데모 모드는 이제 헤더에서 관리되므로 여기서는 제거됨
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setCurrentTab(newValue);
@@ -191,40 +180,19 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ isDemoMode, onDemoMode
 
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* 헤더: 데모 모드 토글 및 설명 */}
+      {/* 헤더: 시스템 설정 */}
       <Paper sx={{ p: 3, mb: 3, backgroundColor: 'primary.50' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
           <Typography variant="h5" component="h2" color="primary">
             ⚙️ 시스템 설정
           </Typography>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={settings.demoMode}
-                onChange={handleDemoModeChange}
-                color="primary"
-              />
-            }
-            label={
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Chip 
-                  label={settings.demoMode ? "데모 모드" : "실제 모드"} 
-                  color={settings.demoMode ? "secondary" : "primary"}
-                  size="small"
-                />
-                <Typography variant="body2">
-                  {settings.demoMode ? "데모 모드" : "실제 모드"}
-                </Typography>
-              </Box>
-            }
-          />
         </Box>
         
         <Alert severity="info" sx={{ mb: 2 }}>
           <AlertTitle>💡 설정 가이드</AlertTitle>
           <Typography variant="body2">
-            <strong>데모 모드</strong>: 실제 서버 없이도 설정을 연습하고 테스트할 수 있습니다. 
-            <strong>실제 모드</strong>: 실제 서버와 연결하여 설정을 적용할 수 있습니다.
+            ECP-AI Kubernetes Orchestrator의 다양한 설정을 관리할 수 있습니다.
+            현재 사용 모드는 상단 헤더에서 확인하고 변경할 수 있습니다.
           </Typography>
         </Alert>
 
