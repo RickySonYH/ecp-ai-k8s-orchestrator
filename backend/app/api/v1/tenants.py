@@ -219,7 +219,10 @@ async def create_tenant_in_db(db: Session, tenant_data: dict) -> Tenant:
 # ==========================================
 
 @router.get("/", response_model=TenantListResponse)
-async def list_tenants(db: Session = Depends(get_db_session)):
+async def list_tenants(
+    db: Session = Depends(get_db_session),
+    x_demo_mode: Optional[str] = Header(None)
+):
     """
     테넌시 목록 조회
     - 데이터베이스에서 테넌시 정보 조회
@@ -227,12 +230,55 @@ async def list_tenants(db: Session = Depends(get_db_session)):
     - 서비스 개수 포함
     """
     try:
+        is_demo = x_demo_mode and x_demo_mode.lower() == 'true'
+        mode_str = "데모" if is_demo else "실사용"
+        logger.info(f"{mode_str} 모드로 테넌시 목록 조회")
+        
         tenants = await get_tenants_from_db(db)
+        
+        # 데모 모드에서 DB에 데이터가 없으면 폴백 데이터 사용
+        if is_demo and len(tenants) == 0:
+            logger.info("데모 모드에서 DB 데이터 없음 - 폴백 데이터 사용")
+            demo_tenants = [
+                TenantSummary(
+                    tenant_id="demo-tenant",
+                    name="데모 테넌시",
+                    preset="small",
+                    is_demo=True,
+                    status="running",
+                    services_count=3,
+                    created_at=datetime.now()
+                ),
+                TenantSummary(
+                    tenant_id="demo-small",
+                    name="소규모 데모",
+                    preset="small", 
+                    is_demo=True,
+                    status="running",
+                    services_count=2,
+                    created_at=datetime.now()
+                ),
+                TenantSummary(
+                    tenant_id="demo-medium",
+                    name="중간 규모 데모",
+                    preset="medium",
+                    is_demo=True,
+                    status="running", 
+                    services_count=5,
+                    created_at=datetime.now()
+                )
+            ]
+            tenants = demo_tenants
+        
+        # 실사용 모드에서는 데모 데이터 필터링
+        if not is_demo:
+            tenants = [t for t in tenants if not t.is_demo]
+            logger.info(f"실사용 모드 - 데모 데이터 제외, {len(tenants)}개 테넌트")
         
         # 통계 계산
         total_count = len(tenants)
         demo_count = len([t for t in tenants if t.is_demo])
-        active_count = len([t for t in tenants if t.status == "active"])
+        active_count = len([t for t in tenants if t.status in ["active", "running"]])
         
         return TenantListResponse(
             tenants=tenants,
@@ -584,37 +630,66 @@ async def get_tenant_metrics(tenant_id: str):
         )
 
 
-@router.get("/")
-async def list_tenants():
+@router.get("/demo-fallback")
+async def get_demo_fallback_data(x_demo_mode: Optional[str] = Header(None)):
     """
-    테넌시 목록 조회
-    - 모든 활성 테넌시 목록
+    데모 모드 전용 폴백 데이터
+    - 데모 DB에 데이터가 없을 때 사용되는 기본 데이터
     """
+    is_demo = x_demo_mode and x_demo_mode.lower() == 'true'
+    
+    if not is_demo:
+        raise HTTPException(
+            status_code=403,
+            detail="데모 모드에서만 접근 가능합니다"
+        )
+    
     try:
-        logger.info("테넌시 목록 조회")
+        logger.info("데모 폴백 데이터 제공")
         
-        # 실제 구현에서는 Kubernetes API로 네임스페이스 목록 조회
-        # 여기서는 임시 데이터
-        tenants = [
+        # 데모 모드용 기본 테넌트 데이터
+        demo_tenants = [
             {
                 "tenant_id": "demo-tenant",
+                "name": "데모 테넌시",
                 "preset": "small",
-                "status": "Running",
+                "is_demo": True,
+                "status": "running",
                 "services_count": 3,
                 "created_at": "2024-12-01T10:00:00Z"
+            },
+            {
+                "tenant_id": "demo-small",
+                "name": "소규모 데모",
+                "preset": "small",
+                "is_demo": True,
+                "status": "running",
+                "services_count": 2,
+                "created_at": "2024-12-01T09:00:00Z"
+            },
+            {
+                "tenant_id": "demo-medium",
+                "name": "중간 규모 데모",
+                "preset": "medium",
+                "is_demo": True,
+                "status": "running",
+                "services_count": 5,
+                "created_at": "2024-12-01T08:00:00Z"
             }
         ]
         
-        return {
-            "tenants": tenants,
-            "total_count": len(tenants)
-        }
+        return TenantListResponse(
+            tenants=[TenantSummary(**tenant) for tenant in demo_tenants],
+            total_count=len(demo_tenants),
+            demo_count=len(demo_tenants),
+            active_count=len(demo_tenants)
+        )
         
     except Exception as e:
-        logger.error("테넌시 목록 조회 실패", error=str(e))
+        logger.error("데모 폴백 데이터 제공 실패", error=str(e))
         raise HTTPException(
             status_code=500,
-            detail=f"테넌시 목록 조회 중 오류가 발생했습니다: {str(e)}"
+            detail=f"데모 데이터 제공 중 오류가 발생했습니다: {str(e)}"
         )
 
 

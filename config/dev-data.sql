@@ -1,12 +1,14 @@
 -- [advice from AI] ECP-AI 개발 환경용 테스트 데이터
 -- 개발 및 테스트를 위한 샘플 데이터 삽입
 
--- 개발용 테넌시 데이터
-INSERT INTO tenants (tenant_id, preset, service_requirements, resources, sla_target, status) 
+-- 개발용 테넌시 데이터 (데모 모드 전용)
+INSERT INTO tenants (tenant_id, name, preset, is_demo, service_requirements, resources, sla_target, status) 
 VALUES 
     (
         'demo-small',
+        '소규모 데모 테넌시',
         'small',
+        true,
         '{"callbot": 25, "chatbot": 100, "advisor": 5}',
         '{"cpu_limit": "8000m", "memory_limit": "16Gi", "gpu_limit": 2, "storage": "500Gi", "gpu_type": "t4", "gpu_count": 2, "cpu_cores": 15}',
         '{"availability": "99.3%", "response_time": "<300ms"}',
@@ -14,19 +16,23 @@ VALUES
     ),
     (
         'demo-medium',
+        '중간 규모 데모 테넌시',
         'medium',
+        true,
         '{"callbot": 100, "chatbot": 500, "advisor": 20}',
         '{"cpu_limit": "32000m", "memory_limit": "64Gi", "gpu_limit": 8, "storage": "500Gi", "gpu_type": "v100", "gpu_count": 6, "cpu_cores": 45}',
         '{"availability": "99.5%", "response_time": "<200ms"}',
         'running'
     ),
     (
-        'test-micro',
-        'micro',
-        '{"callbot": 5, "chatbot": 20, "advisor": 2}',
-        '{"cpu_limit": "2000m", "memory_limit": "4Gi", "gpu_limit": 1, "storage": "500Gi", "gpu_type": "t4", "gpu_count": 1, "cpu_cores": 8}',
-        '{"availability": "99.0%", "response_time": "<500ms"}',
-        'pending'
+        'demo-tenant',
+        '기본 데모 테넌시', 
+        'small',
+        true,
+        '{"callbot": 15, "chatbot": 50, "advisor": 3}',
+        '{"cpu_limit": "4000m", "memory_limit": "8Gi", "gpu_limit": 1, "storage": "500Gi", "gpu_type": "t4", "gpu_count": 1, "cpu_cores": 8}',
+        '{"availability": "99.0%", "response_time": "<400ms"}',
+        'running'
     )
 ON CONFLICT (tenant_id) DO NOTHING;
 

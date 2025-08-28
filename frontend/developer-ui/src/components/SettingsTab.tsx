@@ -17,7 +17,11 @@ import {
   FormControlLabel,
   Alert,
   AlertTitle,
-  Chip
+  Chip,
+  Card,
+  CardContent,
+  Button,
+  TextField
 } from '@mui/material';
 import {
   Code as GitIcon,
@@ -25,7 +29,8 @@ import {
   Storage as K8sIcon,
   Monitor as MonitorIcon,
   Security as SecurityIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
+  PlayArrow
 } from '@mui/icons-material';
 
 // 설정 섹션별 컴포넌트 import

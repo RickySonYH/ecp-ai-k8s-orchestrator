@@ -1,0 +1,19 @@
+# macOS ARM64 환경 전용 오버라이드 설정
+# 사용법: docker-compose -f docker-compose.yml -f docker-compose.macos.yml up -d
+
+version: '3.8'
+
+services:
+  frontend:
+    environment:
+      # macOS Docker Desktop HMR 최적화 설정
+      - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=1000
+      - WDS_SOCKET_HOST=localhost
+      - WDS_SOCKET_PORT=3002
+      - WDS_SOCKET_PATH=/ws
+      - WATCHPACK_POLLING=true
+      - FAST_REFRESH=true
+      # macOS 파일 감시 성능 개선
+      - CI=false
+      - FORCE_COLOR=true
