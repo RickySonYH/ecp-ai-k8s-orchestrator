@@ -102,7 +102,7 @@ app = FastAPI(
     * **Kubernetes 네이티브**: 완전한 K8s 통합 및 자동 배포
     * **실시간 모니터링**: 프로메테우스 메트릭 및 SLA 추적
     """,
-    version="1.0.0",
+    version="1.54.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc"
@@ -132,7 +132,7 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "ecp-ai-k8s-orchestrator",
-        "version": "1.0.0",
+        "version": "1.54.0",
         "timestamp": "2024-12-01T00:00:00Z"
     }
 

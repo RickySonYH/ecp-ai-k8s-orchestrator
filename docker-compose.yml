@@ -36,36 +36,7 @@ services:
         max-file: "3"
 
   # PostgreSQL 데모 데이터베이스 - 데모 모드 전용 (데모 데이터)
-  postgres-demo:
-    image: postgres:15-alpine
-    container_name: ecp-postgres-demo
-    environment:
-      POSTGRES_DB: ecp_orchestrator_demo
-      POSTGRES_USER: ecp_demo_user
-      POSTGRES_PASSWORD: ecp_demo_password
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
-      POSTGRES_HOST_AUTH_METHOD: trust
-      PGDATA: /var/lib/postgresql/data/pgdata
-    volumes:
-      - postgres_demo_data:/var/lib/postgresql/data
-      - ./config/init-db.sql:/docker-entrypoint-initdb.d/01-init-db.sql
-      - ./config/demo-data.sql:/docker-entrypoint-initdb.d/02-demo-data.sql
-    ports:
-      - "5434:5432"
-    networks:
-      - ecp-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ecp_demo_user -d ecp_orchestrator_demo"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+  # [advice from AI] 데모 데이터베이스 제거 - 실제 테넌시 생성 기반으로 전환
 
   # Redis 캐시 - 테넌시 상태 및 리소스 계산 캐시 (개발 환경 최적화)
   redis:
@@ -199,7 +170,7 @@ services:
       - REACT_APP_SUPPORTED_GPU_TYPES=t4,v100,l40s
       - REACT_APP_TENANT_PRESETS=micro,small,medium,large
       - REACT_APP_SERVICES=callbot,chatbot,advisor,stt,tts,ta,qa
-      - REACT_APP_VERSION=1.0.0
+      - REACT_APP_VERSION=1.54.0
       - REACT_APP_TITLE=ECP-AI Kubernetes Orchestrator
       
       # 개발 환경 설정 (범용)
@@ -472,8 +443,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      postgres-demo:
-        condition: service_healthy
+      # [advice from AI] 데모 데이터베이스 의존성 제거
       k8s-simulator-postgres:
         condition: service_healthy
     networks:
@@ -494,9 +464,7 @@ volumes:
   postgres_data:
     name: ecp-postgres-data
     driver: local
-  postgres_demo_data:
-    name: ecp-postgres-demo-data
-    driver: local
+  # [advice from AI] 데모 데이터베이스 볼륨 제거
   redis_data:
     name: ecp-redis-data
     driver: local

@@ -1,6 +1,6 @@
 {
   "name": "k8s-simulator-dashboard",
-  "version": "1.0.0",
+  "version": "1.54.0",
   "description": "K8S Simulator with SLA Monitoring Dashboard",
   "private": true,
   "dependencies": {

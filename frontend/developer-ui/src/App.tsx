@@ -770,7 +770,7 @@ function App() {
             </Tooltip>
             
             <Typography variant="body2" sx={{ ml: 2 }}>
-              Developer Console v1.0
+              Developer Console v1.54
             </Typography>
           </Toolbar>
         </StyledAppBar>

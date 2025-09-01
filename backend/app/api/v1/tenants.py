@@ -59,8 +59,8 @@ def get_db_session(x_demo_mode: Optional[str] = Header(None)):
     Returns:
         DB 세션 제너레이터
     """
-    is_demo = x_demo_mode and x_demo_mode.lower() == 'true'
-    session = db_manager.get_session(is_demo)
+    # [advice from AI] 데모 모드 제거 - 단일 데이터베이스 사용
+    session = db_manager.get_session()
     try:
         yield session
     finally:
@@ -230,54 +230,13 @@ async def list_tenants(
     - 서비스 개수 포함
     """
     try:
-        is_demo = x_demo_mode and x_demo_mode.lower() == 'true'
-        mode_str = "데모" if is_demo else "실사용"
-        logger.info(f"{mode_str} 모드로 테넌시 목록 조회")
+        # [advice from AI] 데모 모드 제거 - 단일 데이터베이스 사용
+        logger.info("테넌시 목록 조회")
         
         tenants = await get_tenants_from_db(db)
         
-        # 데모 모드에서 DB에 데이터가 없으면 폴백 데이터 사용
-        if is_demo and len(tenants) == 0:
-            logger.info("데모 모드에서 DB 데이터 없음 - 폴백 데이터 사용")
-            demo_tenants = [
-                TenantSummary(
-                    tenant_id="demo-tenant",
-                    name="데모 테넌시",
-                    preset="small",
-                    is_demo=True,
-                    status="running",
-                    services_count=3,
-                    created_at=datetime.now()
-                ),
-                TenantSummary(
-                    tenant_id="demo-small",
-                    name="소규모 데모",
-                    preset="small", 
-                    is_demo=True,
-                    status="running",
-                    services_count=2,
-                    created_at=datetime.now()
-                ),
-                TenantSummary(
-                    tenant_id="demo-medium",
-                    name="중간 규모 데모",
-                    preset="medium",
-                    is_demo=True,
-                    status="running", 
-                    services_count=5,
-                    created_at=datetime.now()
-                )
-            ]
-            tenants = demo_tenants
-        
-        # 실사용 모드에서는 데모 데이터 필터링
-        if not is_demo:
-            tenants = [t for t in tenants if not t.is_demo]
-            logger.info(f"실사용 모드 - 데모 데이터 제외, {len(tenants)}개 테넌트")
-        
         # 통계 계산
         total_count = len(tenants)
-        demo_count = len([t for t in tenants if t.is_demo])
         active_count = len([t for t in tenants if t.status in ["active", "running"]])
         
         return TenantListResponse(

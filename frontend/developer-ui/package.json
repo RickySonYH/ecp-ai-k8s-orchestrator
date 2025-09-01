@@ -1,6 +1,6 @@
 {
   "name": "ecp-ai-developer-ui",
-  "version": "1.2.0",
+  "version": "1.54.0",
   "description": "ECP-AI Kubernetes Orchestrator Developer Console - 콜봇/챗봇/어드바이저 테넌시 관리",
   "private": true,
   "dependencies": {

@@ -1,0 +1,1702 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-tenant-001-ecp-ai
+  labels:
+    tenant: test-tenant-001
+    app.kubernetes.io/name: ecp-ai
+    app.kubernetes.io/managed-by: ecp-orchestrator
+    tier: small
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/preset: small
+  annotations:
+    ecp.ai/created-by: ecp-orchestrator
+    ecp.ai/description: "ECP-AI tenant namespace for test-tenant-001"---
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ecp-config
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+data:
+  tenant-config.yaml: |
+    tenantId: test-tenant-001
+    preset: small
+    services:
+      callbot:
+        enabled: true
+        count: 1
+      chatbot:
+        enabled: true
+        count: 1
+      advisor:
+        enabled: true
+        count: 1
+      stt:
+        enabled: true
+        count: 1
+      tts:
+        enabled: true
+        count: 1
+      ta:
+        enabled: true
+        count: 1
+      qa:
+        enabled: true
+        count: 1
+    resources:
+      gpu_type: t4
+      gpu_count: 3
+      cpu_cores: 30
+    sla:
+      availability: 99.9
+      response_time: 300---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tts-server
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: tts-server
+    tenant: test-tenant-001
+    tier: gpu
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tts-server
+      tenant: test-tenant-001
+  template:
+    metadata:
+      labels:
+        app: tts-server
+        tenant: test-tenant-001
+        tier: gpu
+        monitoring: enabled
+    spec:
+      nodeSelector:
+        accelerator: nvidia-t4
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Equal
+        value: present
+        effect: NoSchedule
+      containers:
+      - name: tts-server
+        image: ecp-ai/tts-server:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: TENANT_ID
+          value: test-tenant-001
+        - name: SERVICE_NAME
+          value: tts-server
+        - name: GPU_TYPE
+          value: t4
+        resources:
+          requests:
+            nvidia.com/gpu: 1
+            cpu: 2000m
+            memory: 4Gi
+          limits:
+            nvidia.com/gpu: 1
+            cpu: 4000m
+            memory: 8Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tts-server-service
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: tts-server
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: tts-server
+    monitoring: enabled
+spec:
+  selector:
+    app: tts-server
+    tenant: test-tenant-001
+  ports:
+  
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  
+  type: ClusterIP---
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tts-server-hpa
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: tts-server
+    tenant: test-tenant-001
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tts-server
+  minReplicas: 1
+  maxReplicas: 3  # GPU 서비스는 제한적 스케일링
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80  # GPU 서비스는 높은 임계값
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 300  # 더 긴 안정화 시간
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 300
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 300
+---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nlp-server
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: nlp-server
+    tenant: test-tenant-001
+    tier: gpu
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nlp-server
+      tenant: test-tenant-001
+  template:
+    metadata:
+      labels:
+        app: nlp-server
+        tenant: test-tenant-001
+        tier: gpu
+        monitoring: enabled
+    spec:
+      nodeSelector:
+        accelerator: nvidia-t4
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Equal
+        value: present
+        effect: NoSchedule
+      containers:
+      - name: nlp-server
+        image: ecp-ai/nlp-server:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: TENANT_ID
+          value: test-tenant-001
+        - name: SERVICE_NAME
+          value: nlp-server
+        - name: GPU_TYPE
+          value: t4
+        resources:
+          requests:
+            nvidia.com/gpu: 1
+            cpu: 4000m
+            memory: 8Gi
+          limits:
+            nvidia.com/gpu: 1
+            cpu: 8000m
+            memory: 16Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nlp-server-service
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: nlp-server
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: nlp-server
+    monitoring: enabled
+spec:
+  selector:
+    app: nlp-server
+    tenant: test-tenant-001
+  ports:
+  
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  
+  type: ClusterIP---
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nlp-server-hpa
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: nlp-server
+    tenant: test-tenant-001
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nlp-server
+  minReplicas: 1
+  maxReplicas: 3  # GPU 서비스는 제한적 스케일링
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80  # GPU 서비스는 높은 임계값
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 300  # 더 긴 안정화 시간
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 300
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 300
+---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aicm-server
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: aicm-server
+    tenant: test-tenant-001
+    tier: gpu
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aicm-server
+      tenant: test-tenant-001
+  template:
+    metadata:
+      labels:
+        app: aicm-server
+        tenant: test-tenant-001
+        tier: gpu
+        monitoring: enabled
+    spec:
+      nodeSelector:
+        accelerator: nvidia-t4
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Equal
+        value: present
+        effect: NoSchedule
+      containers:
+      - name: aicm-server
+        image: ecp-ai/aicm-server:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: TENANT_ID
+          value: test-tenant-001
+        - name: SERVICE_NAME
+          value: aicm-server
+        - name: GPU_TYPE
+          value: t4
+        resources:
+          requests:
+            nvidia.com/gpu: 1
+            cpu: 2000m
+            memory: 6Gi
+          limits:
+            nvidia.com/gpu: 1
+            cpu: 4000m
+            memory: 12Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aicm-server-service
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: aicm-server
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: aicm-server
+    monitoring: enabled
+spec:
+  selector:
+    app: aicm-server
+    tenant: test-tenant-001
+  ports:
+  
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  
+  type: ClusterIP---
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: aicm-server-hpa
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: aicm-server
+    tenant: test-tenant-001
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: aicm-server
+  minReplicas: 1
+  maxReplicas: 3  # GPU 서비스는 제한적 스케일링
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80  # GPU 서비스는 높은 임계값
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 300  # 더 긴 안정화 시간
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 300
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 300
+---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stt-server
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: stt-server
+    tenant: test-tenant-001
+    tier: cpu
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: stt-server
+      tenant: test-tenant-001
+  template:
+    metadata:
+      labels:
+        app: stt-server
+        tenant: test-tenant-001
+        tier: cpu
+        monitoring: enabled
+    spec:
+      containers:
+      - name: stt-server
+        image: ecp-ai/stt-server:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: TENANT_ID
+          value: test-tenant-001
+        - name: SERVICE_NAME
+          value: stt-server
+        resources:
+          requests:
+            cpu: 4000m
+            memory: 8Gi
+          limits:
+            cpu: 8000m
+            memory: 16Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stt-server-service
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: stt-server
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: stt-server
+    monitoring: enabled
+spec:
+  selector:
+    app: stt-server
+    tenant: test-tenant-001
+  ports:
+  
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  
+  type: ClusterIP---
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: stt-server-hpa
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: stt-server
+    tenant: test-tenant-001
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: stt-server
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ta-server
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: ta-server
+    tenant: test-tenant-001
+    tier: cpu
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ta-server
+      tenant: test-tenant-001
+  template:
+    metadata:
+      labels:
+        app: ta-server
+        tenant: test-tenant-001
+        tier: cpu
+        monitoring: enabled
+    spec:
+      containers:
+      - name: ta-server
+        image: ecp-ai/ta-server:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: TENANT_ID
+          value: test-tenant-001
+        - name: SERVICE_NAME
+          value: ta-server
+        resources:
+          requests:
+            cpu: 2000m
+            memory: 4Gi
+          limits:
+            cpu: 4000m
+            memory: 8Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ta-server-service
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: ta-server
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: ta-server
+    monitoring: enabled
+spec:
+  selector:
+    app: ta-server
+    tenant: test-tenant-001
+  ports:
+  
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  
+  type: ClusterIP---
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ta-server-hpa
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: ta-server
+    tenant: test-tenant-001
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ta-server
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qa-server
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: qa-server
+    tenant: test-tenant-001
+    tier: cpu
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qa-server
+      tenant: test-tenant-001
+  template:
+    metadata:
+      labels:
+        app: qa-server
+        tenant: test-tenant-001
+        tier: cpu
+        monitoring: enabled
+    spec:
+      containers:
+      - name: qa-server
+        image: ecp-ai/qa-server:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: TENANT_ID
+          value: test-tenant-001
+        - name: SERVICE_NAME
+          value: qa-server
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qa-server-service
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: qa-server
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: qa-server
+    monitoring: enabled
+spec:
+  selector:
+    app: qa-server
+    tenant: test-tenant-001
+  ports:
+  
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  
+  type: ClusterIP---
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: qa-server-hpa
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: qa-server
+    tenant: test-tenant-001
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: qa-server
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: callbot
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: callbot
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: callbot
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  selector:
+    matchLabels:
+      app: callbot
+      tenant: test-tenant-001
+  template:
+    metadata:
+      labels:
+        app: callbot
+        tenant: test-tenant-001
+        ecp.ai/tenant-id: test-tenant-001
+        ecp.ai/service: callbot
+        monitoring: enabled
+    spec:
+      
+      
+      containers:
+      - name: callbot
+        image: ecp-ai/callbot:latest
+        ports:
+        
+        - containerPort: 8080
+          protocol: TCP
+        
+        env:
+        - name: TENANT_ID
+          value: test-tenant-001
+        - name: SERVICE_NAME
+          value: callbot
+        
+        
+        resources:
+          requests:
+            
+            cpu: 100m
+            memory: 256Mi
+            
+          limits:
+            
+            cpu: 1000m
+            memory: 1Gi
+            
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+          successThreshold: 1---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: callbot-service
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: callbot
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: callbot
+    monitoring: enabled
+spec:
+  selector:
+    app: callbot
+    tenant: test-tenant-001
+  ports:
+  
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  
+  type: ClusterIP---
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: callbot-hpa
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: callbot
+    tenant: test-tenant-001
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: callbot
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chatbot
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: chatbot
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: chatbot
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  selector:
+    matchLabels:
+      app: chatbot
+      tenant: test-tenant-001
+  template:
+    metadata:
+      labels:
+        app: chatbot
+        tenant: test-tenant-001
+        ecp.ai/tenant-id: test-tenant-001
+        ecp.ai/service: chatbot
+        monitoring: enabled
+    spec:
+      
+      
+      containers:
+      - name: chatbot
+        image: ecp-ai/chatbot:latest
+        ports:
+        
+        - containerPort: 8080
+          protocol: TCP
+        
+        env:
+        - name: TENANT_ID
+          value: test-tenant-001
+        - name: SERVICE_NAME
+          value: chatbot
+        
+        
+        resources:
+          requests:
+            
+            cpu: 100m
+            memory: 256Mi
+            
+          limits:
+            
+            cpu: 1000m
+            memory: 1Gi
+            
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+          successThreshold: 1---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chatbot-service
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: chatbot
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: chatbot
+    monitoring: enabled
+spec:
+  selector:
+    app: chatbot
+    tenant: test-tenant-001
+  ports:
+  
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  
+  type: ClusterIP---
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: chatbot-hpa
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: chatbot
+    tenant: test-tenant-001
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: chatbot
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: advisor
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: advisor
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: advisor
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  selector:
+    matchLabels:
+      app: advisor
+      tenant: test-tenant-001
+  template:
+    metadata:
+      labels:
+        app: advisor
+        tenant: test-tenant-001
+        ecp.ai/tenant-id: test-tenant-001
+        ecp.ai/service: advisor
+        monitoring: enabled
+    spec:
+      
+      
+      containers:
+      - name: advisor
+        image: ecp-ai/advisor:latest
+        ports:
+        
+        - containerPort: 8080
+          protocol: TCP
+        
+        env:
+        - name: TENANT_ID
+          value: test-tenant-001
+        - name: SERVICE_NAME
+          value: advisor
+        
+        
+        resources:
+          requests:
+            
+            cpu: 100m
+            memory: 256Mi
+            
+          limits:
+            
+            cpu: 1000m
+            memory: 1Gi
+            
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+          successThreshold: 1---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: advisor-service
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: advisor
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: advisor
+    monitoring: enabled
+spec:
+  selector:
+    app: advisor
+    tenant: test-tenant-001
+  ports:
+  
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  
+  type: ClusterIP---
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: advisor-hpa
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: advisor
+    tenant: test-tenant-001
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: advisor
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: nginx
+    tenant: test-tenant-001
+    tier: infrastructure
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+      tenant: test-tenant-001
+  template:
+    metadata:
+      labels:
+        app: nginx
+        tenant: test-tenant-001
+        tier: infrastructure
+        monitoring: enabled
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.21-alpine
+        ports:
+        - containerPort: 80
+        env:
+        - name: TENANT_ID
+          value: test-tenant-001
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          tcpSocket:
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: nginx
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: nginx
+    monitoring: enabled
+spec:
+  selector:
+    app: nginx
+    tenant: test-tenant-001
+  ports:
+  
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  
+  type: ClusterIP---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: api-gateway
+    tenant: test-tenant-001
+    tier: infrastructure
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+      tenant: test-tenant-001
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+        tenant: test-tenant-001
+        tier: infrastructure
+        monitoring: enabled
+    spec:
+      containers:
+      - name: api-gateway
+        image: ecp-ai/api-gateway:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: TENANT_ID
+          value: test-tenant-001
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway-service
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: api-gateway
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: api-gateway
+    monitoring: enabled
+spec:
+  selector:
+    app: api-gateway
+    tenant: test-tenant-001
+  ports:
+  
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  
+  type: ClusterIP---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresql
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: postgresql
+    tenant: test-tenant-001
+    tier: infrastructure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgresql
+      tenant: test-tenant-001
+  template:
+    metadata:
+      labels:
+        app: postgresql
+        tenant: test-tenant-001
+        tier: infrastructure
+        monitoring: enabled
+    spec:
+      containers:
+      - name: postgresql
+        image: postgres:13-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: TENANT_ID
+          value: test-tenant-001
+        - name: POSTGRES_DB
+          value: test-tenant-001_db
+        - name: POSTGRES_USER
+          value: ecp_user
+        - name: POSTGRES_PASSWORD
+          value: ecp_password
+        resources:
+          requests:
+            cpu: 2000m
+            memory: 4Gi
+          limits:
+            cpu: 4000m
+            memory: 8Gi
+        livenessProbe:
+          tcpSocket:
+            port: 5432
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 5432
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql-service
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: postgresql
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: postgresql
+    monitoring: enabled
+spec:
+  selector:
+    app: postgresql
+    tenant: test-tenant-001
+  ports:
+  
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  
+  type: ClusterIP---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: auth-service
+    tenant: test-tenant-001
+    tier: infrastructure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-service
+      tenant: test-tenant-001
+  template:
+    metadata:
+      labels:
+        app: auth-service
+        tenant: test-tenant-001
+        tier: infrastructure
+        monitoring: enabled
+    spec:
+      containers:
+      - name: auth-service
+        image: ecp-ai/auth-service:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: TENANT_ID
+          value: test-tenant-001
+        - name: JWT_SECRET
+          value: ecp-jwt-secret-test-tenant-001
+        - name: DB_HOST
+          value: postgresql-service
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service-service
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: auth-service
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: auth-service
+    monitoring: enabled
+spec:
+  selector:
+    app: auth-service
+    tenant: test-tenant-001
+  ports:
+  
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  
+  type: ClusterIP---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vectordb
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: vectordb
+    tenant: test-tenant-001
+    tier: infrastructure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vectordb
+      tenant: test-tenant-001
+  template:
+    metadata:
+      labels:
+        app: vectordb
+        tenant: test-tenant-001
+        tier: infrastructure
+        monitoring: enabled
+    spec:
+      containers:
+      - name: vectordb
+        image: qdrant/qdrant:latest
+        ports:
+        - containerPort: 6333
+        env:
+        - name: TENANT_ID
+          value: test-tenant-001
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          tcpSocket:
+            port: 6333
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 6333
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vectordb-service
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    app: vectordb
+    tenant: test-tenant-001
+    ecp.ai/tenant-id: test-tenant-001
+    ecp.ai/service: vectordb
+    monitoring: enabled
+spec:
+  selector:
+    app: vectordb
+    tenant: test-tenant-001
+  ports:
+  
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  
+  type: ClusterIP---
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ecp-storage-pvc
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    tenant: test-tenant-001
+    tier: storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 350Gi
+  storageClassName: fast-ssd
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ecp-logs-pvc
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    tenant: test-tenant-001
+    tier: storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard
+---
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ecp-ai-network-policy
+  namespace: test-tenant-001-ecp-ai
+  labels:
+    tenant: test-tenant-001
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          ecp.ai/tenant-id: test-tenant-001
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          ecp.ai/tenant-id: test-tenant-001
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app.kubernetes.io/name: ecp-ai
+    tenant: test-tenant-001
+  name: ecp-ai-monitoring
+  namespace: test-tenant-001-ecp-ai
+spec:
+  endpoints:
+  - interval: 30s
+    path: /metrics
+    port: metrics
+  selector:
+    matchLabels:
+      monitoring: enabled
+

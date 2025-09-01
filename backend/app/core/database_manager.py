@@ -48,128 +48,83 @@ class DatabaseManager:
                 bind=self._production_engine
             )
             
-            # 데모 DB 연결 설정
-            demo_db_url = os.getenv(
-                'DEMO_DATABASE_URL', 
-                'postgresql://ecp_demo_user:ecp_demo_password@postgres-demo:5432/ecp_orchestrator_demo'
-            )
-            
-            self._demo_engine = create_engine(
-                demo_db_url,
-                pool_pre_ping=True,
-                pool_recycle=300,
-                echo=os.getenv('DB_ECHO', 'false').lower() == 'true'
-            )
-            
-            self._demo_session_factory = sessionmaker(
-                autocommit=False, 
-                autoflush=False, 
-                bind=self._demo_engine
-            )
+                        # [advice from AI] 데모 DB 연결 제거 - 실제 테넌시 생성 기반으로 전환
             
             logger.info("데이터베이스 연결 초기화 완료")
             logger.info(f"실사용 DB: {production_db_url}")
-            logger.info(f"데모 DB: {demo_db_url}")
+            # [advice from AI] 데모 DB 로그 제거
             
         except Exception as e:
             logger.error(f"데이터베이스 연결 초기화 실패: {e}")
             raise
     
-    def get_session(self, is_demo: bool = False) -> Session:
+    def get_session(self) -> Session:
         """
-        모드에 따른 DB 세션 반환
+        실사용 DB 세션 반환
         
-        Args:
-            is_demo (bool): 데모 모드 여부
-            
         Returns:
             Session: SQLAlchemy 세션
         """
         try:
-            if is_demo:
-                if not self._demo_session_factory:
-                    raise ValueError("데모 DB 연결이 초기화되지 않았습니다")
-                session = self._demo_session_factory()
-                logger.debug("데모 DB 세션 생성")
-            else:
-                if not self._production_session_factory:
-                    raise ValueError("실사용 DB 연결이 초기화되지 않았습니다")
-                session = self._production_session_factory()
-                logger.debug("실사용 DB 세션 생성")
+            if not self._production_session_factory:
+                raise ValueError("실사용 DB 연결이 초기화되지 않았습니다")
+            session = self._production_session_factory()
+            logger.debug("실사용 DB 세션 생성")
             
             return session
             
         except Exception as e:
-            logger.error(f"DB 세션 생성 실패 (demo={is_demo}): {e}")
+            logger.error(f"DB 세션 생성 실패: {e}")
             raise
     
-    def get_engine(self, is_demo: bool = False):
+    def get_engine(self):
         """
-        모드에 따른 DB 엔진 반환
+        실사용 DB 엔진 반환
         
-        Args:
-            is_demo (bool): 데모 모드 여부
-            
         Returns:
             Engine: SQLAlchemy 엔진
         """
-        if is_demo:
-            return self._demo_engine
-        else:
-            return self._production_engine
+        return self._production_engine
     
-    def create_tables(self, is_demo: bool = False):
+    def create_tables(self):
         """
-        테이블 생성
-        
-        Args:
-            is_demo (bool): 데모 모드 여부
+        실사용 DB 테이블 생성
         """
         try:
-            engine = self.get_engine(is_demo)
+            engine = self.get_engine()
             Base.metadata.create_all(bind=engine)
             
-            mode_str = "데모" if is_demo else "실사용"
-            logger.info(f"{mode_str} DB 테이블 생성 완료")
+            logger.info("실사용 DB 테이블 생성 완료")
             
         except Exception as e:
-            logger.error(f"테이블 생성 실패 (demo={is_demo}): {e}")
+            logger.error(f"테이블 생성 실패: {e}")
             raise
     
-    def check_connection(self, is_demo: bool = False) -> bool:
+    def check_connection(self) -> bool:
         """
-        DB 연결 상태 확인
+        실사용 DB 연결 상태 확인
         
-        Args:
-            is_demo (bool): 데모 모드 여부
-            
         Returns:
             bool: 연결 상태
         """
         try:
-            engine = self.get_engine(is_demo)
+            engine = self.get_engine()
             with engine.connect() as conn:
                 conn.execute("SELECT 1")
             
-            mode_str = "데모" if is_demo else "실사용"
-            logger.info(f"{mode_str} DB 연결 상태 양호")
+            logger.info("실사용 DB 연결 상태 양호")
             return True
             
         except Exception as e:
-            mode_str = "데모" if is_demo else "실사용"
-            logger.error(f"{mode_str} DB 연결 실패: {e}")
+            logger.error(f"실사용 DB 연결 실패: {e}")
             return False
     
     def close_connections(self):
-        """모든 DB 연결 종료"""
+        """실사용 DB 연결 종료"""
         try:
             if self._production_engine:
                 self._production_engine.dispose()
                 logger.info("실사용 DB 연결 종료")
-            
-            if self._demo_engine:
-                self._demo_engine.dispose()
-                logger.info("데모 DB 연결 종료")
                 
         except Exception as e:
             logger.error(f"DB 연결 종료 중 오류: {e}")
@@ -178,9 +133,9 @@ class DatabaseManager:
 db_manager = DatabaseManager()
 
 # 의존성 주입용 함수들
-def get_db_session(is_demo: bool = False):
-    """DB 세션 의존성 주입"""
-    session = db_manager.get_session(is_demo)
+def get_db_session():
+    """실사용 DB 세션 의존성 주입"""
+    session = db_manager.get_session()
     try:
         yield session
     finally:
@@ -188,22 +143,13 @@ def get_db_session(is_demo: bool = False):
 
 def get_production_db():
     """실사용 DB 세션 반환"""
-    return get_db_session(is_demo=False)
-
-def get_demo_db():
-    """데모 DB 세션 반환"""
-    return get_db_session(is_demo=True)
+    return get_db_session()
 
 # FastAPI 의존성으로 사용할 함수
-def get_db(is_demo: bool = False):
-    """
-    FastAPI 의존성용 DB 세션 팩토리
-    
-    Args:
-        is_demo (bool): 데모 모드 여부
-    """
+def get_db():
+    """FastAPI 의존성용 실사용 DB 세션 팩토리"""
     def _get_db_session():
-        session = db_manager.get_session(is_demo)
+        session = db_manager.get_session()
         try:
             yield session
         finally:

@@ -207,7 +207,7 @@ tenant.storage_limit={tenant_data.get('storage_limit', '10Gi')}
                     "metadata": {
                         "labels": {
                             "app": app_name,
-                            "version": "v1.0.0"
+                            "version": "v1.54.0"
                         },
                         "annotations": {
                             "prometheus.io/scrape": "true",

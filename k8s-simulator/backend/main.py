@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="K8S Simulator with SLA Monitoring",
     description="가상 쿠버네티스 환경 시뮬레이터 및 SLA 99.5% 모니터링 솔루션",
-    version="1.0.0"
+    version="1.54.0"
 )
 
 # CORS middleware
