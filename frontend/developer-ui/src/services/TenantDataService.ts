@@ -6,7 +6,8 @@
  * - 일관된 API로 프론트엔드에서 사용
  */
 
-import DemoDataManager, { TenantSummary, TenantCreateRequest, ServiceRequirements } from './DemoDataManager.ts';
+// [advice from AI] DemoDataManager 제거됨 - 실제 데이터만 사용
+// import DemoDataManager, { TenantSummary, TenantCreateRequest, ServiceRequirements } from './DemoDataManager.ts';
 
 export interface DeploymentStatus {
   success: boolean;
@@ -50,11 +51,13 @@ export interface TenantDataServiceInterface {
 // [advice from AI] 데모 모드 데이터 서비스 구현 (백엔드 데모 DB 사용)
 class DemoTenantDataService implements TenantDataServiceInterface {
   private baseUrl: string;
-  private demoManager: DemoDataManager;
+  // [advice from AI] DemoDataManager 제거됨
+  // private demoManager: DemoDataManager;
 
   constructor(baseUrl: string = 'http://localhost:8001/api/v1') {
     this.baseUrl = baseUrl;
-    this.demoManager = DemoDataManager.getInstance();
+    // [advice from AI] DemoDataManager 제거됨
+    // this.demoManager = DemoDataManager.getInstance();
   }
 
   async getTenants(): Promise<TenantSummary[]> {
@@ -73,7 +76,8 @@ class DemoTenantDataService implements TenantDataServiceInterface {
     } catch (error) {
       console.error('데모 모드 테넌트 조회 실패:', error);
       // 폴백으로 로컬 데모 데이터 사용
-      const demoManager = DemoDataManager.getInstance();
+      // [advice from AI] DemoDataManager 제거됨
+      // const demoManager = DemoDataManager.getInstance();
       return await demoManager.getTenants();
     }
   }
@@ -96,7 +100,8 @@ class DemoTenantDataService implements TenantDataServiceInterface {
     } catch (error) {
       console.error('데모 모드 테넌트 조회 실패:', error);
       // 폴백으로 로컬 데모 데이터 사용
-      const demoManager = DemoDataManager.getInstance();
+      // [advice from AI] DemoDataManager 제거됨
+      // const demoManager = DemoDataManager.getInstance();
       return await demoManager.getTenant(tenantId);
     }
   }

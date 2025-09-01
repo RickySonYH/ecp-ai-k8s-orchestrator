@@ -23,6 +23,9 @@ from app.api.v1.tenants import router as tenants_router
 from app.api.v1.images import router as images_router
 from app.api.v1.image_management import router as image_management_router
 from app.api.v1.simulator_integration import router as simulator_router  # [advice from AI] 시뮬레이터 라우터 추가
+from app.api.v1.statistics import router as statistics_router  # [advice from AI] 통계 라우터 추가
+from app.api.v1.cicd_images import router as cicd_images_router  # [advice from AI] CICD 이미지 라우터 추가
+from app.api.v1.deployment_pipeline import router as deployment_router  # [advice from AI] 배포 파이프라인 라우터 추가
 
 # from app.core.tenant_manager import TenantManager
 # from app.core.resource_calculator import ResourceCalculator  
@@ -119,9 +122,9 @@ app.add_middleware(
 
 # API 라우터 등록
 app.include_router(tenants_router, prefix="/api/v1")
-app.include_router(images_router, prefix="/api/v1") 
-app.include_router(image_management_router, prefix="/api/v1")
-app.include_router(simulator_router, prefix="/api/v1", tags=["simulator"])  # [advice from AI] 시뮬레이터 라우터 등록
+app.include_router(statistics_router, prefix="/api/v1", tags=["statistics"])  # [advice from AI] 통계 라우터 등록
+app.include_router(cicd_images_router, prefix="/api/v1/cicd", tags=["cicd"])  # [advice from AI] CICD 이미지 라우터 등록
+app.include_router(deployment_router, prefix="/api/v1/deployment", tags=["deployment"])  # [advice from AI] 배포 파이프라인 라우터 등록
 
 
 

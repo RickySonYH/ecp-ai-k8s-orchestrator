@@ -41,8 +41,7 @@ import {
   DialogTitle,
   DialogContent,
   CircularProgress,
-  Chip,
-  alpha
+  Chip
 } from '@mui/material';
 import {
   Brightness4 as DarkModeIcon,
@@ -57,11 +56,7 @@ import {
   Close as CloseIcon,
   Refresh as RefreshIcon,
   CloudQueue as CloudIcon,
-  Memory as MemoryIcon,
-  Speed as SpeedIcon,
-  Build as BuildIcon,
-  PlayArrow as DemoIcon,
-  Rocket as ProductionIcon
+  Build as BuildIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
@@ -70,11 +65,11 @@ import { TenantCreator } from './components/TenantCreator.tsx';
 import { TenantDashboard } from './components/TenantDashboard.tsx';
 import AdvancedMonitoring from './components/AdvancedMonitoring.tsx';
 import CICDManagement from './components/CICDManagement.tsx';
-import ManifestPreviewTest from './components/ManifestPreviewTest.tsx';
-import Dashboard from './components/DemoDashboard.tsx';
 import { SettingsTab } from './components/SettingsTab.tsx';
-import ModeSelector from './components/ModeSelector.tsx';
-import TenantManager from './components/TenantManager.tsx';
+// [advice from AI] ModeSelector 제거 - 모드 선택 기능 완전 삭제
+import NotificationCenter from './components/NotificationCenter.tsx';
+import { notificationService } from './services/NotificationService';
+import IntegratedDashboard from './components/IntegratedDashboard.tsx';
 import TenantDataServiceFactory, { TenantDataServiceInterface, SystemMetrics as ServiceSystemMetrics } from './services/TenantDataService.ts';
 
 // 타입 정의
@@ -133,23 +128,7 @@ const StyledDrawer = styled(Drawer)(({ theme }) => ({
   },
 }));
 
-const SystemMetricCard = styled(Card)(({ theme }) => ({
-  background: theme.palette.mode === 'dark'
-    ? `linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(67, 56, 202, 0.05))`
-    : `linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(129, 140, 248, 0.03))`,
-  backdropFilter: 'blur(20px)',
-  border: `1px solid ${theme.palette.mode === 'dark' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.1)'}`,
-  boxShadow: theme.palette.mode === 'dark' 
-    ? '0 8px 32px rgba(99, 102, 241, 0.1)' 
-    : '0 4px 20px rgba(99, 102, 241, 0.08)',
-  transition: 'all 0.3s ease',
-  '&:hover': {
-    transform: 'translateY(-2px)',
-    boxShadow: theme.palette.mode === 'dark' 
-      ? '0 12px 40px rgba(99, 102, 241, 0.2)' 
-      : '0 8px 30px rgba(99, 102, 241, 0.15)',
-  },
-}));
+
 
 const FloatingActionButton = styled(Fab)(({ theme }) => ({
   position: 'fixed',
@@ -180,8 +159,9 @@ function App() {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   
-  // [advice from AI] 팝업 대시보드 상태 추가
-  const [dashboardPopupOpen, setDashboardPopupOpen] = useState(false);
+
+  const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
+  const [dashboardPopupOpen, setDashboardPopupOpen] = useState(false); // [advice from AI] 누락된 상태 추가
 
   // [advice from AI] 테넌시 목록 로딩 상태 추가
   const [tenantsLoading, setTenantsLoading] = useState(false);
@@ -189,53 +169,13 @@ function App() {
   // [advice from AI] 통합 데이터 서비스 인스턴스
   const [dataService, setDataService] = useState<TenantDataServiceInterface | null>(null);
 
-  // [advice from AI] 모드 선택 상태 관리 - 초기 선택 화면과 데모 모드 상태
-  const [modeSelected, setModeSelected] = useState(() => {
-    // [advice from AI] 임시로 항상 모드 선택 화면 표시 (디버깅용)
-    console.log('모드 선택 상태 초기화: false (항상 모드 선택 화면 표시)');
-    return false;
-    
-    // 원래 코드 (주석 처리)
-    // try {
-    //   return localStorage.getItem('ecp-ai-mode-selected') === 'true';
-    // } catch (error) {
-    //   console.warn('로컬 스토리지 접근 실패, 기본값 사용:', error);
-    //   return false; // 기본적으로 모드 선택 화면 표시
-    // }
-  });
+  // [advice from AI] 모드 선택 제거 - 바로 메인 앱으로 진입
+  const [modeSelected, setModeSelected] = useState(true); // 항상 true로 설정
   
-  const [isDemoMode, setIsDemoMode] = useState(() => {
-    // 로컬 스토리지에서 저장된 데모 모드 설정 불러오기
-    try {
-      const savedDemoMode = localStorage.getItem('ecp-ai-demo-mode');
-      return savedDemoMode !== null ? JSON.parse(savedDemoMode) : true; // 기본값은 데모 모드
-    } catch (error) {
-      console.warn('로컬 스토리지 접근 실패, 데모 모드로 설정:', error);
-      return true; // 기본값은 데모 모드
-    }
-  });
+  // [advice from AI] 데모 모드 완전 제거 - 실사용 모드만 사용
+  const [isDemoMode, setIsDemoMode] = useState(false); // 항상 false
 
-  // [advice from AI] 초기 모드 선택 핸들러
-  const handleModeSelect = (isDemoModeSelected: boolean) => {
-    console.log('모드 선택:', isDemoModeSelected ? '데모 모드' : '실사용 모드'); // 디버깅용
-    
-    setIsDemoMode(isDemoModeSelected);
-    setModeSelected(true);
-    
-    try {
-      localStorage.setItem('ecp-ai-demo-mode', JSON.stringify(isDemoModeSelected));
-      localStorage.setItem('ecp-ai-mode-selected', 'true');
-    } catch (error) {
-      console.warn('로컬 스토리지 저장 실패:', error);
-    }
-    
-    // 데이터 서비스 인스턴스 생성
-    const service = TenantDataServiceFactory.create(isDemoModeSelected);
-    setDataService(service);
-    
-    // 모드 선택 후 테넌시 목록 로드
-    fetchTenants();
-  };
+  // [advice from AI] 모드 선택 핸들러 제거 - 실사용 모드만 사용
 
   // [advice from AI] 데모 모드 변경 시 로컬 스토리지에 저장 (헤더에서 모드 변경용)
   const handleDemoModeChange = (demoMode: boolean) => {
@@ -250,200 +190,8 @@ function App() {
     fetchTenants();
   };
 
-  // [advice from AI] 하드코딩된 데모 테넌시 데이터 (20개 - CI/CD 서비스와 일치)
-  const demoTenants: TenantSummary[] = [
-    // 메인 서비스 테넌시
-    {
-      tenant_id: 'demo-tenant-1',
-      name: '글로벌 콜센터',
-      status: 'running',
-      preset: 'large',
-      is_demo: true,
-      services_count: 5,
-      created_at: '2024-01-15T10:30:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-2',
-      name: '스마트 상담봇',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 3,
-      created_at: '2024-01-14T15:20:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-3',
-      name: 'AI 어드바이저',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 4,
-      created_at: '2024-01-13T09:15:00Z'
-    },
-    
-    // AI/NLP 서비스 테넌시
-    {
-      tenant_id: 'demo-tenant-4',
-      name: '음성 분석 서비스',
-      status: 'running',
-      preset: 'small',
-      is_demo: true,
-      services_count: 2,
-      created_at: '2024-01-12T14:45:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-5',
-      name: 'TTS 음성합성',
-      status: 'running',
-      preset: 'small',
-      is_demo: true,
-      services_count: 2,
-      created_at: '2024-01-11T11:20:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-6',
-      name: 'NLP 엔진',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 3,
-      created_at: '2024-01-10T16:30:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-7',
-      name: 'AI 대화 관리',
-      status: 'running',
-      preset: 'large',
-      is_demo: true,
-      services_count: 6,
-      created_at: '2024-01-09T13:15:00Z'
-    },
-    
-    // 분석 서비스 테넌시
-    {
-      tenant_id: 'demo-tenant-8',
-      name: 'TA 통계분석',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 3,
-      created_at: '2024-01-08T10:45:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-9',
-      name: 'QA 품질관리',
-      status: 'running',
-      preset: 'small',
-      is_demo: true,
-      services_count: 2,
-      created_at: '2024-01-07T14:20:00Z'
-    },
-    
-    // 인프라 서비스 테넌시
-    {
-      tenant_id: 'demo-tenant-10',
-      name: '웹 서버 클러스터',
-      status: 'running',
-      preset: 'large',
-      is_demo: true,
-      services_count: 4,
-      created_at: '2024-01-06T09:30:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-11',
-      name: 'API 게이트웨이',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 3,
-      created_at: '2024-01-05T11:45:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-12',
-      name: '권한 관리 시스템',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 2,
-      created_at: '2024-01-04T15:10:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-13',
-      name: '대화 이력 저장소',
-      status: 'running',
-      preset: 'large',
-      is_demo: true,
-      services_count: 5,
-      created_at: '2024-01-03T12:25:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-14',
-      name: '시나리오 빌더',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 3,
-      created_at: '2024-01-02T16:40:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-15',
-      name: '시스템 모니터링',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 2,
-      created_at: '2024-01-01T08:15:00Z'
-    },
-    
-    // 데이터 서비스 테넌시
-    {
-      tenant_id: 'demo-tenant-16',
-      name: '데이터베이스 클러스터',
-      status: 'running',
-      preset: 'large',
-      is_demo: true,
-      services_count: 4,
-      created_at: '2023-12-31T20:30:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-17',
-      name: '벡터 데이터베이스',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 3,
-      created_at: '2023-12-30T14:20:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-18',
-      name: '캐시 시스템',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 2,
-      created_at: '2023-12-29T10:45:00Z'
-    },
-    
-    // 특화 서비스 테넌시
-    {
-      tenant_id: 'demo-tenant-19',
-      name: '실시간 통신',
-      status: 'running',
-      preset: 'medium',
-      is_demo: true,
-      services_count: 3,
-      created_at: '2023-12-28T17:15:00Z'
-    },
-    {
-      tenant_id: 'demo-tenant-20',
-      name: '화자 분리 시스템',
-      status: 'running',
-      preset: 'small',
-      is_demo: true,
-      services_count: 2,
-      created_at: '2023-12-27T13:50:00Z'
-    }
-  ];
+  // [advice from AI] 하드코딩 제거 - 실제 API 데이터만 사용
+      // [advice from AI] 하드코딩 제거 완료
 
   // [advice from AI] 통합 데이터 서비스를 사용한 테넌시 목록 조회
   const fetchTenants = async () => {
@@ -676,15 +424,7 @@ function App() {
     }
   }, []);
 
-  // [advice from AI] 모드 미선택 시 모드 선택 화면 표시
-  if (!modeSelected) {
-    return (
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <ModeSelector onModeSelect={handleModeSelect} />
-      </ThemeProvider>
-    );
-  }
+  // [advice from AI] 모드 선택 화면 완전 제거 - 바로 메인 앱으로 진입
 
   return (
     <ThemeProvider theme={theme}>
@@ -707,55 +447,12 @@ function App() {
               ECP-AI Kubernetes Orchestrator
             </Typography>
             
-            {/* [advice from AI] 현재 모드 표시 및 변경 버튼 */}
-            <Tooltip title="현재 사용 모드 (클릭하여 변경)">
-              <Chip
-                icon={isDemoMode ? <DemoIcon /> : <ProductionIcon />}
-                label={isDemoMode ? "데모 모드" : "실사용 모드"}
-                color={isDemoMode ? "secondary" : "primary"}
-                variant="outlined"
-                clickable
-                onClick={() => {
-                  const newMode = !isDemoMode;
-                  if (window.confirm(
-                    `${newMode ? '데모 모드' : '실사용 모드'}로 변경하시겠습니까?\n\n` +
-                    `${newMode 
-                      ? '데모 모드: 가상 데이터로 안전하게 기능을 체험할 수 있습니다.' 
-                      : '실사용 모드: 실제 Kubernetes 클러스터에 연결하여 진짜 테넌시를 관리합니다.'
-                    }`
-                  )) {
-                    handleDemoModeChange(newMode);
-                  }
-                }}
-                sx={{
-                  mr: 2,
-                  fontWeight: 'medium',
-                  '& .MuiChip-icon': {
-                    fontSize: '1.2rem'
-                  },
-                  '&:hover': {
-                    backgroundColor: isDemoMode 
-                      ? alpha(theme.palette.secondary.main, 0.1) 
-                      : alpha(theme.palette.primary.main, 0.1),
-                  }
-                }}
-              />
-            </Tooltip>
-            
-            {/* 시스템 상태 표시 */}
-            {systemMetrics && (
-              <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
-                <Tooltip title={`테넌시 ${systemMetrics.total_tenants}개 활성`}>
-                  <Badge badgeContent={systemMetrics.total_tenants} color="secondary">
-                    <DashboardIcon />
-                  </Badge>
-                </Tooltip>
-              </Box>
-            )}
-            
-            {/* 알림 */}
-            <Tooltip title="알림">
-              <IconButton color="inherit">
+            {/* 알림 센터 */}
+            <Tooltip title="알림 센터">
+              <IconButton 
+                color="inherit"
+                onClick={() => setNotificationCenterOpen(true)}
+              >
                 <Badge badgeContent={notifications.length} color="error">
                   <NotificationsIcon />
                 </Badge>
@@ -800,43 +497,25 @@ function App() {
             
             <ListItem 
               button 
-              onClick={() => { setCurrentTab(0); setDrawerOpen(false); }}
-            >
-              <ListItemIcon><AddIcon /></ListItemIcon>
-              <ListItemText primary="테넌시 생성" />
-            </ListItem>
-            
-            <ListItem 
-              button 
               onClick={() => { setCurrentTab(1); setDrawerOpen(false); }}
             >
               <ListItemIcon><DashboardIcon /></ListItemIcon>
-              <ListItemText primary="대시보드" />
+              <ListItemText primary="통합 대시보드" />
             </ListItem>
             
-            <ListItem button onClick={() => { setCurrentTab(3); setDrawerOpen(false); }}>
-              <ListItemIcon><ListIcon /></ListItemIcon>
-              <ListItemText primary="테넌시 목록" />
-            </ListItem>
-            
-            <ListItem button onClick={() => { setCurrentTab(4); setDrawerOpen(false); }}>
-              <ListItemIcon><MonitoringIcon /></ListItemIcon>
-              <ListItemText primary="고급 모니터링" />
-            </ListItem>
-            
-            <ListItem button onClick={() => { setCurrentTab(5); setDrawerOpen(false); }}>
+            <ListItem button onClick={() => { setCurrentTab(2); setDrawerOpen(false); }}>
               <ListItemIcon><BuildIcon /></ListItemIcon>
               <ListItemText primary="CI/CD 관리" />
             </ListItem>
             
-            <ListItem button onClick={() => { setCurrentTab(6); setDrawerOpen(false); }}>
-              <ListItemIcon><SettingsIcon /></ListItemIcon>
-              <ListItemText primary="설정" />
+            <ListItem button onClick={() => { setCurrentTab(3); setDrawerOpen(false); }}>
+              <ListItemIcon><MonitoringIcon /></ListItemIcon>
+              <ListItemText primary="고급 모니터링" />
             </ListItem>
             
-            <ListItem button onClick={() => { setCurrentTab(7); setDrawerOpen(false); }}>
-              <ListItemIcon><BuildIcon /></ListItemIcon>
-              <ListItemText primary="매니페스트 테스트" />
+            <ListItem button onClick={() => { setCurrentTab(4); setDrawerOpen(false); }}>
+              <ListItemIcon><SettingsIcon /></ListItemIcon>
+              <ListItemText primary="설정" />
             </ListItem>
           </List>
           
@@ -876,108 +555,10 @@ function App() {
           </Box>
           
           <Box sx={{ flexGrow: 1 }} />
-          
-          {/* 시스템 상태 */}
-          {systemMetrics && (
-            <Box sx={{ p: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                시스템 상태
-              </Typography>
-              <Grid container spacing={1}>
-                <Grid item xs={6}>
-                  <Card variant="outlined" sx={{ p: 1 }}>
-                    <Typography variant="caption">GPU</Typography>
-                    <Typography variant="h6" color="primary">
-                      {systemMetrics.total_allocated_gpus || 0}
-                    </Typography>
-                  </Card>
-                </Grid>
-                <Grid item xs={6}>
-                  <Card variant="outlined" sx={{ p: 1 }}>
-                    <Typography variant="caption">CPU</Typography>
-                    <Typography variant="h6" color="secondary">
-                      {systemMetrics.total_allocated_cpus || 0}
-                    </Typography>
-                  </Card>
-                </Grid>
-              </Grid>
-            </Box>
-          )}
         </StyledDrawer>
 
         {/* [advice from AI] 메인 컨텐츠 - 고정 AppBar를 위한 상단 여백 추가 */}
         <Container maxWidth="xl" sx={{ mt: 10, pb: 10 }}>
-          {/* 시스템 상태 오버뷰 */}
-          {systemMetrics && (
-            <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={12} md={3}>
-                <SystemMetricCard>
-                  <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-                    <DashboardIcon sx={{ mr: 2, fontSize: 40, color: 'primary.main' }} />
-                    <Box>
-                      <Typography variant="h4" fontWeight="bold">
-                        {systemMetrics.active_tenants}/{systemMetrics.total_tenants}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        활성/전체 테넌트
-                      </Typography>
-                    </Box>
-                  </CardContent>
-                </SystemMetricCard>
-              </Grid>
-              
-              <Grid item xs={12} md={3}>
-                <SystemMetricCard>
-                  <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-                    <CloudIcon sx={{ mr: 2, fontSize: 40, color: 'secondary.main' }} />
-                    <Box>
-                      <Typography variant="h4" fontWeight="bold">
-                        {systemMetrics.total_services}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        배포된 서비스
-                      </Typography>
-                    </Box>
-                  </CardContent>
-                </SystemMetricCard>
-              </Grid>
-              
-              <Grid item xs={12} md={3}>
-                <SystemMetricCard>
-                  <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-                    <MemoryIcon sx={{ mr: 2, fontSize: 40, color: 'success.main' }} />
-                    <Box>
-                      <Typography variant="h4" fontWeight="bold">
-                        {systemMetrics.total_allocated_gpus}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        할당된 GPU
-                      </Typography>
-                    </Box>
-                  </CardContent>
-                </SystemMetricCard>
-              </Grid>
-              
-              <Grid item xs={12} md={3}>
-                <SystemMetricCard>
-                  <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-                    <SpeedIcon sx={{ mr: 2, fontSize: 40, color: 'warning.main' }} />
-                    <Box>
-                      <Typography variant="h4" fontWeight="bold">
-                        {systemMetrics.total_allocated_cpus}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        할당된 CPU 코어
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                        메모리: {systemMetrics.total_memory_allocated}
-                      </Typography>
-                    </Box>
-                  </CardContent>
-                </SystemMetricCard>
-              </Grid>
-            </Grid>
-          )}
 
           {/* 탭 네비게이션 */}
           <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
@@ -993,14 +574,8 @@ function App() {
                 iconPosition="start"
               />
               <Tab 
-                label="🚀 대시보드" 
+                label="📊 통합 대시보드" 
                 icon={<DashboardIcon />}
-                iconPosition="start"
-              />
-
-              <Tab 
-                label="📋 테넌시 목록" 
-                icon={<ListIcon />}
                 iconPosition="start"
               />
               <Tab 
@@ -1025,7 +600,7 @@ function App() {
           <TabPanel value={currentTab} index={0}>
             <TenantCreator 
               onTenantCreated={handleTenantCreated} 
-              onTenantSaved={(tenant) => {
+              onTenantSaved={(tenant: any) => {
                 setTenantList(prev => [...prev, tenant]);
                 setSnackbarMessage(`테넌시 '${tenant.tenant_id}' 저장 완료!`);
                 setSnackbarOpen(true);
@@ -1035,45 +610,32 @@ function App() {
           </TabPanel>
 
           <TabPanel value={currentTab} index={1}>
-            <Dashboard isDemoMode={isDemoMode} />
-          </TabPanel>
-
-
-
-          <TabPanel value={currentTab} index={2}>
-            <TenantManager 
-              isDemoMode={isDemoMode}
-              tenants={tenantList}
-              onRefresh={fetchTenants}
-              onTenantSelect={(tenantId) => {
-                setSelectedTenant(tenantId);
-                // 팝업 대시보드 표시를 위한 상태 설정
-                setDashboardPopupOpen(true);
-              }}
-            />
+            <IntegratedDashboard isDemoMode={isDemoMode} />
           </TabPanel>
 
           {/* CI/CD 관리 탭 */}
-          <TabPanel value={currentTab} index={3}>
+          <TabPanel value={currentTab} index={2}>
             <CICDManagement isDemoMode={isDemoMode} />
           </TabPanel>
 
           {/* 고급 모니터링 탭 */}
-          <TabPanel value={currentTab} index={4}>
+          <TabPanel value={currentTab} index={3}>
             <AdvancedMonitoring isDemoMode={isDemoMode} />
           </TabPanel>
 
-          <TabPanel value={currentTab} index={5}>
+          <TabPanel value={currentTab} index={4}>
             <SettingsTab 
               isDemoMode={isDemoMode}
               onDemoModeChange={handleDemoModeChange}
             />
           </TabPanel>
-          
-          <TabPanel value={currentTab} index={6}>
-            <ManifestPreviewTest />
-          </TabPanel>
         </Container>
+
+        {/* 알림 센터 */}
+        <NotificationCenter
+          open={notificationCenterOpen}
+          onClose={() => setNotificationCenterOpen(false)}
+        />
 
         {/* 플로팅 액션 버튼 */}
         <FloatingActionButton

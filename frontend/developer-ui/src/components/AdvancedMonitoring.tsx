@@ -86,40 +86,8 @@ const AdvancedMonitoring: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = t
   const [slaMetrics, setSlaMetrics] = useState<any>({});
   const [alerts, setAlerts] = useState<any[]>([]);
 
-  // [advice from AI] 데모 테넌시 목록 (20개 - CI/CD 서비스와 일치)
-  const demoTenants = [
-    // 메인 서비스 테넌시
-    { id: 'tenant-001', name: '글로벌 콜센터', preset: 'large', status: 'healthy' },
-    { id: 'tenant-002', name: '스마트 상담봇', preset: 'medium', status: 'warning' },
-    { id: 'tenant-003', name: 'AI 어드바이저', preset: 'medium', status: 'healthy' },
-    
-    // AI/NLP 서비스 테넌시
-    { id: 'tenant-004', name: '음성 분석 서비스', preset: 'small', status: 'healthy' },
-    { id: 'tenant-005', name: 'TTS 음성합성', preset: 'small', status: 'critical' },
-    { id: 'tenant-006', name: 'NLP 엔진', preset: 'medium', status: 'healthy' },
-    { id: 'tenant-007', name: 'AI 대화 관리', preset: 'large', status: 'warning' },
-    
-    // 분석 서비스 테넌시
-    { id: 'tenant-008', name: 'TA 통계분석', preset: 'medium', status: 'healthy' },
-    { id: 'tenant-009', name: 'QA 품질관리', preset: 'small', status: 'healthy' },
-    
-    // 인프라 서비스 테넌시
-    { id: 'tenant-010', name: '웹 서버 클러스터', preset: 'large', status: 'healthy' },
-    { id: 'tenant-011', name: 'API 게이트웨이', preset: 'medium', status: 'healthy' },
-    { id: 'tenant-012', name: '권한 관리 시스템', preset: 'medium', status: 'warning' },
-    { id: 'tenant-013', name: '대화 이력 저장소', preset: 'large', status: 'healthy' },
-    { id: 'tenant-014', name: '시나리오 빌더', preset: 'medium', status: 'healthy' },
-    { id: 'tenant-015', name: '시스템 모니터링', preset: 'medium', status: 'healthy' },
-    
-    // 데이터 서비스 테넌시
-    { id: 'tenant-016', name: '데이터베이스 클러스터', preset: 'large', status: 'healthy' },
-    { id: 'tenant-017', name: '벡터 데이터베이스', preset: 'medium', status: 'warning' },
-    { id: 'tenant-018', name: '캐시 시스템', preset: 'medium', status: 'healthy' },
-    
-    // 특화 서비스 테넌시
-    { id: 'tenant-019', name: '실시간 통신', preset: 'medium', status: 'healthy' },
-    { id: 'tenant-020', name: '화자 분리 시스템', preset: 'small', status: 'critical' }
-  ];
+  // [advice from AI] 샘플 데이터 완전 제거 - 실제 데이터만 사용
+  const demoTenants: any[] = [];
 
   // [advice from AI] 데모 모드에 따른 데이터 로드 분기
   useEffect(() => {

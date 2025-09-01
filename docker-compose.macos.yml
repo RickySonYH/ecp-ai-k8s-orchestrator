@@ -1,10 +1,16 @@
-# macOS ARM64 환경 전용 오버라이드 설정
+# macOS ARM64 환경 전용 오버라이드 설정 + 실시간 개발 환경
 # 사용법: docker-compose -f docker-compose.yml -f docker-compose.macos.yml up -d
 
 version: '3.8'
 
 services:
   frontend:
+    # [advice from AI] 실시간 개발을 위한 볼륨 마운트 추가
+    volumes:
+      - ./frontend/developer-ui/src:/app/src:rw
+      - ./frontend/developer-ui/public:/app/public:rw
+      - ./frontend/developer-ui/package.json:/app/package.json:ro
+      - frontend-node-modules:/app/node_modules
     environment:
       # macOS Docker Desktop HMR 최적화 설정
       - CHOKIDAR_USEPOLLING=true
@@ -17,3 +23,13 @@ services:
       # macOS 파일 감시 성능 개선
       - CI=false
       - FORCE_COLOR=true
+      # 개발 모드 활성화
+      - NODE_ENV=development
+      - GENERATE_SOURCEMAP=false
+      - SKIP_PREFLIGHT_CHECK=true
+
+# [advice from AI] 볼륨 정의 추가
+volumes:
+  frontend-node-modules:
+    name: ecp-frontend-node-modules
+    driver: local

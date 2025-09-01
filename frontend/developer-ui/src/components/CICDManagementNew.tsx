@@ -1,12 +1,11 @@
-// [advice from AI] CI/CD 이미지 라이프사이클 관리 컴포넌트 - 배포 관리 제거
+// [advice from AI] 개선된 CI/CD 관리 컴포넌트 - 사용자 워크플로우 기반 구조
 /**
- * CI/CD Image Lifecycle Management Component
- * 순수 이미지 관리 중심 구조:
+ * Improved CI/CD Management Component
+ * 워크플로우 기반 탭 구조:
  * 1. 📦 이미지 라이프사이클: 기본 이미지 관리 + 빌드 + 보안 스캔
  * 2. 🔗 소스 연동 & 자동화: GitHub 연동 + 빌드 트리거 + 파이프라인 템플릿
- * 3. ⚙️ 레지스트리 & 정책: 레지스트리 설정 + 보안 정책 + 감사 로그
- * 
- * 배포 관리는 테넌트 생성 워크플로우에서 처리됨
+ * 3. 🚀 배포 관리: 배포 전략 + 실시간 모니터링 + 롤백
+ * 4. ⚙️ 레지스트리 & 정책: 레지스트리 설정 + 보안 정책 + 감사 로그
  */
 
 import React, { useState, useEffect } from 'react';
@@ -41,6 +40,7 @@ import {
 // 컴포넌트 임포트
 import ImageRegistration from './cicd/ImageRegistration.tsx';
 import GitHubIntegration from './cicd/GitHubIntegration.tsx';
+import DeploymentPipeline from './cicd/DeploymentPipeline.tsx';
 
 // TabPanel 컴포넌트
 interface TabPanelProps {
@@ -87,6 +87,8 @@ const CICDManagementNew: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = fa
       case 1:
         return "GitHub 저장소 연동, 자동 빌드 트리거 설정, CI/CD 파이프라인 템플릿을 관리합니다.";
       case 2:
+        return "배포 전략 설정, 실시간 배포 모니터링, 롤백 관리를 통합적으로 제공합니다.";
+      case 3:
         return "컨테이너 레지스트리 연결, 보안 정책 설정, 감사 로그를 관리합니다.";
       default:
         return "";
@@ -101,7 +103,7 @@ const CICDManagementNew: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = fa
           🔧 CI/CD 관리 센터
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-          컨테이너 이미지의 전체 생명주기를 관리합니다. 배포는 테넌트 생성 과정에서 처리됩니다.
+          컨테이너 이미지의 전체 생명주기를 관리하고 배포 파이프라인을 설정합니다.
         </Typography>
         
         {/* 현재 탭 설명 */}
@@ -148,6 +150,12 @@ const CICDManagementNew: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = fa
             sx={{ gap: 1 }}
           />
           <Tab 
+            label="🚀 배포 관리" 
+            icon={<BuildIcon />} 
+            iconPosition="start"
+            sx={{ gap: 1 }}
+          />
+          <Tab 
             label="⚙️ 레지스트리 & 정책" 
             icon={<SettingsIcon />} 
             iconPosition="start"
@@ -186,8 +194,22 @@ const CICDManagementNew: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = fa
         </Box>
       </TabPanel>
 
-      {/* ⚙️ 레지스트리 & 정책 */}
+      {/* 🚀 배포 관리 */}
       <TabPanel value={currentTab} index={2}>
+        <Box>
+          <Typography variant="h5" gutterBottom>
+            🚀 배포 관리
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            배포 전략 설정 및 실시간 배포 상태를 모니터링합니다.
+          </Typography>
+          
+          <DeploymentPipeline />
+        </Box>
+      </TabPanel>
+
+      {/* ⚙️ 레지스트리 & 정책 */}
+      <TabPanel value={currentTab} index={3}>
         <Box>
           <Typography variant="h5" gutterBottom>
             ⚙️ 레지스트리 & 정책 관리

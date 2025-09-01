@@ -280,6 +280,28 @@ class DeploymentStatus(Base):
     )
 
 
+# [advice from AI] CICD 이미지 관리 테이블 추가
+class CICDImage(Base):
+    """CICD 이미지 관리 테이블"""
+    __tablename__ = "cicd_images"
+
+    id = Column(Integer, primary_key=True, index=True)
+    service_name = Column(String(100), unique=True, index=True, nullable=False)
+    display_name = Column(String(200), nullable=False)
+    image_name = Column(String(200), nullable=False)
+    image_tag = Column(String(100), default="latest")
+    registry_url = Column(String(500), nullable=False)
+    repository = Column(String(500), nullable=False)
+    category = Column(String(50), nullable=False)  # main, ai_nlp, analytics, infrastructure, data, specialized
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<CICDImage(service_name='{self.service_name}', category='{self.category}')>"
+
+
 # 데이터베이스 테이블 생성 함수
 def create_tables():
     """데이터베이스 테이블 생성"""

@@ -1,4 +1,4 @@
-// [advice from AI] 테넌트 리스트 관리 컴포넌트 - 순수 조회/관리 기능만
+// [advice from AI] 테넌트 리스트 컴포넌트 - 순수 조회/관리 기능만
 /**
  * TenantList Component
  * - 기존 테넌트 조회, 수정, 삭제, 상태 변경
@@ -34,24 +34,7 @@ import {
   MenuItem as MenuItemComponent,
   Divider,
   CircularProgress,
-  Snackbar,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  LinearProgress,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Tabs,
-  Tab
+  Snackbar
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -63,37 +46,37 @@ import {
   Download as ExportIcon,
   Upload as ImportIcon,
   RestoreFromTrash as ResetIcon,
-  Visibility as ViewIcon,
-  Add as AddIcon,
-  CloudUpload as DeployIcon,
-  Settings as SettingsIcon,
-  Monitor as MonitorIcon,
-  History as RollbackIcon,
-  CheckCircle as CheckCircleIcon,
-  Warning as WarningIcon,
-  Error as ErrorIcon,
-  ExpandMore as ExpandMoreIcon,
-  Build as BuildIcon,
-  PlayArrow as PlayArrowIcon
+  Visibility as ViewIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-// [advice from AI] DemoDataManager 제거됨 - 실제 데이터만 사용
-// import { TenantSummary } from '../services/DemoDataManager';
 import TenantDataServiceFactory, { TenantDataServiceInterface } from '../services/TenantDataService.ts';
 
-interface TenantManagerProps {
-  isDemoMode: boolean;
+// 타입 정의
+interface TenantSummary {
+  tenant_id: string;
+  name?: string;
+  status: string;
+  preset: string;
+  is_demo: boolean;
+  services_count: number;
+  created_at: string;
+  dataSource?: string;
+}
+
+interface TenantListProps {
+  isDemoMode?: boolean;
   tenants: TenantSummary[];
   onRefresh: () => void;
   onTenantSelect?: (tenantId: string) => void;
 }
 
+// 스타일드 컴포넌트
 const StyledCard = styled(Card)(({ theme }) => ({
-  transition: 'all 0.3s ease',
   cursor: 'pointer',
+  transition: 'all 0.2s ease-in-out',
   '&:hover': {
     transform: 'translateY(-2px)',
-    boxShadow: theme.shadows[8],
+    boxShadow: theme.shadows[4],
   },
 }));
 
@@ -103,56 +86,23 @@ const StatusChip = styled(Chip)<{ status: string }>(({ theme, status }) => ({
     backgroundColor: theme.palette.success.main,
     color: theme.palette.success.contrastText,
   }),
-  ...(status === 'pending' && {
-    backgroundColor: theme.palette.warning.main,
-    color: theme.palette.warning.contrastText,
-  }),
   ...(status === 'stopped' && {
     backgroundColor: theme.palette.error.main,
     color: theme.palette.error.contrastText,
   }),
+  ...(status === 'pending' && {
+    backgroundColor: theme.palette.warning.main,
+    color: theme.palette.warning.contrastText,
+  }),
 }));
 
-// 배포 파이프라인 관련 타입
-interface TenantConfig {
-  tenant_id: string;
-  channels: number;
-  concurrent_calls: number;
-  service_requirements: {
-    [key: string]: {
-      cpu_cores: number;
-      memory_gb: number;
-      replicas: number;
-    };
-  };
-}
-
-interface ServiceImageSelection {
-  service_name: string;
-  display_name: string;
-  current_tag: string;
-  available_tags: string[];
-  selected_tag: string;
-  category: string;
-}
-
-interface DeploymentStatus {
-  deployment_id: string;
-  service_name: string;
-  status: string;
-  progress: number;
-  message: string;
-  started_at: string;
-  updated_at: string;
-}
-
-export const TenantManager: React.FC<TenantManagerProps> = ({
-  isDemoMode,
+const TenantList: React.FC<TenantListProps> = ({
+  isDemoMode = false,
   tenants,
   onRefresh,
   onTenantSelect
 }) => {
-  // 기존 상태
+  // 상태 관리
   const [dataService, setDataService] = useState<TenantDataServiceInterface | null>(null);
   const [selectedTenant, setSelectedTenant] = useState<TenantSummary | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -164,8 +114,6 @@ export const TenantManager: React.FC<TenantManagerProps> = ({
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importData, setImportData] = useState('');
-
-  // [advice from AI] 생성 관련 상태 제거 - 순수 관리 기능만 유지
 
   // 편집 폼 상태
   const [editForm, setEditForm] = useState({
@@ -180,88 +128,18 @@ export const TenantManager: React.FC<TenantManagerProps> = ({
     setDataService(service);
   }, [isDemoMode]);
 
-  // [advice from AI] 테넌트 생성 함수 제거 - TenantCreator에서 처리
-
-  const loadServiceImages = async (serviceRequirements: any) => {
-    try {
-      const response = await fetch('http://localhost:8001/api/v1/cicd/list');
-      if (response.ok) {
-        const data = await response.json();
-        
-        // 테넌트에 필요한 서비스만 필터링
-        const requiredServices = Object.keys(serviceRequirements);
-        const filteredImages = data.images.filter((img: any) => 
-          requiredServices.includes(img.service_name)
-        );
-
-        const imageSelections: ServiceImageSelection[] = filteredImages.map((img: any) => ({
-          service_name: img.service_name,
-          display_name: img.display_name,
-          current_tag: img.image_tag || 'latest',
-          available_tags: ['latest', 'v1.2.3', 'v1.2.2', 'v1.2.1'],
-          selected_tag: img.image_tag || 'latest',
-          category: img.category
-        }));
-
-        setServiceImages(imageSelections);
-      }
-    } catch (error) {
-      console.error('서비스 이미지 로드 오류:', error);
+  // 유틸리티 함수들
+  const getPresetColor = (preset: string) => {
+    switch (preset) {
+      case 'micro': return 'default';
+      case 'small': return 'primary';
+      case 'medium': return 'secondary';
+      case 'large': return 'error';
+      default: return 'default';
     }
   };
 
-  const handleImageTagChange = (serviceName: string, newTag: string) => {
-    setServiceImages(prev => 
-      prev.map(img => 
-        img.service_name === serviceName 
-          ? { ...img, selected_tag: newTag }
-          : img
-      )
-    );
-  };
-
-  const handleStartDeployment = async () => {
-    if (!tenantConfig) return;
-
-    setLoading(true);
-    try {
-      const deploymentPromises = serviceImages.map(async (service) => {
-        const response = await fetch('http://localhost:8001/api/v1/deployment/deploy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            service_name: service.service_name,
-            image_tag: service.selected_tag,
-            tenant_id: tenantConfig.tenant_id,
-            namespace: pipelineConfig.namespace,
-            deployment_strategy: pipelineConfig.deployment_strategy,
-            replicas: tenantConfig.service_requirements[service.service_name]?.replicas || 2
-          })
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          return result.status;
-        }
-        throw new Error(`${service.service_name} 배포 실패`);
-      });
-
-      const results = await Promise.all(deploymentPromises);
-      setDeploymentStatuses(results);
-      setActiveStep(2);
-      setSnackbarMessage('배포가 시작되었습니다!');
-      setSnackbarOpen(true);
-      
-    } catch (error) {
-      console.error('배포 오류:', error);
-      setSnackbarMessage('배포 중 오류가 발생했습니다.');
-      setSnackbarOpen(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 메뉴 핸들러
+  // 이벤트 핸들러
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, tenantId: string) => {
     event.stopPropagation();
     setMenuAnchorEl(event.currentTarget);
@@ -273,7 +151,6 @@ export const TenantManager: React.FC<TenantManagerProps> = ({
     setMenuTenantId(null);
   };
 
-  // 테넌트 편집
   const handleEdit = (tenant: TenantSummary) => {
     setSelectedTenant(tenant);
     setEditForm({
@@ -288,27 +165,27 @@ export const TenantManager: React.FC<TenantManagerProps> = ({
   const handleEditSave = async () => {
     if (!selectedTenant || !dataService) return;
 
+    setLoading(true);
     try {
-      setLoading(true);
       await dataService.updateTenant(selectedTenant.tenant_id, {
         name: editForm.name,
         status: editForm.status,
         preset: editForm.preset
       });
       
-      setSnackbarMessage(`테넌트 '${selectedTenant.tenant_id}' 업데이트 완료!`);
+      setSnackbarMessage('테넌트 정보가 업데이트되었습니다.');
       setSnackbarOpen(true);
       setEditDialogOpen(false);
       onRefresh();
     } catch (error) {
-      setSnackbarMessage(`업데이트 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+      console.error('테넌트 편집 오류:', error);
+      setSnackbarMessage('테넌트 편집 중 오류가 발생했습니다.');
       setSnackbarOpen(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // 테넌트 삭제
   const handleDelete = (tenant: TenantSummary) => {
     setSelectedTenant(tenant);
     setDeleteDialogOpen(true);
@@ -318,35 +195,34 @@ export const TenantManager: React.FC<TenantManagerProps> = ({
   const handleDeleteConfirm = async () => {
     if (!selectedTenant || !dataService) return;
 
+    setLoading(true);
     try {
-      setLoading(true);
       await dataService.deleteTenant(selectedTenant.tenant_id);
-      
-      setSnackbarMessage(`테넌트 '${selectedTenant.tenant_id}' 삭제 완료!`);
+      setSnackbarMessage(`테넌트 '${selectedTenant.tenant_id}'가 삭제되었습니다.`);
       setSnackbarOpen(true);
       setDeleteDialogOpen(false);
       onRefresh();
     } catch (error) {
-      setSnackbarMessage(`삭제 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+      console.error('테넌트 삭제 오류:', error);
+      setSnackbarMessage('테넌트 삭제 중 오류가 발생했습니다.');
       setSnackbarOpen(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // 테넌트 상태 변경
   const handleStatusChange = async (tenantId: string, newStatus: string) => {
     if (!dataService) return;
 
+    setLoading(true);
     try {
-      setLoading(true);
-      await dataService.updateTenantStatus(tenantId, newStatus);
-      
+      await dataService.updateTenant(tenantId, { status: newStatus });
       setSnackbarMessage(`테넌트 상태가 '${newStatus}'로 변경되었습니다.`);
       setSnackbarOpen(true);
       onRefresh();
     } catch (error) {
-      setSnackbarMessage(`상태 변경 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+      console.error('상태 변경 오류:', error);
+      setSnackbarMessage('상태 변경 중 오류가 발생했습니다.');
       setSnackbarOpen(true);
     } finally {
       setLoading(false);
@@ -354,81 +230,61 @@ export const TenantManager: React.FC<TenantManagerProps> = ({
     handleMenuClose();
   };
 
-  // 데이터 내보내기 (데모 모드만)
-  const handleExport = async () => {
-    if (!isDemoMode || !dataService || !('exportData' in dataService)) return;
-
-    try {
-      const data = await dataService.exportData!();
-      const blob = new Blob([data], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `ecp-ai-demo-data-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      
-      setSnackbarMessage('데모 데이터 내보내기 완료!');
-      setSnackbarOpen(true);
-    } catch (error) {
-      setSnackbarMessage(`내보내기 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-      setSnackbarOpen(true);
-    }
+  // 데모 모드 전용 기능들
+  const handleExport = () => {
+    const dataStr = JSON.stringify(tenants, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    
+    const exportFileDefaultName = `tenant-data-${new Date().toISOString().split('T')[0]}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
   };
 
-  // 데이터 가져오기 (데모 모드만)
   const handleImport = async () => {
-    if (!isDemoMode || !dataService || !('importData' in dataService) || !importData.trim()) return;
+    if (!dataService) return;
 
     try {
-      setLoading(true);
-      await dataService.importData!(importData);
-      
-      setSnackbarMessage('데모 데이터 가져오기 완료!');
-      setSnackbarOpen(true);
-      setImportDialogOpen(false);
-      setImportData('');
-      onRefresh();
+      const importedData = JSON.parse(importData);
+      if (Array.isArray(importedData)) {
+        setLoading(true);
+        await dataService.importTenants(importedData);
+        setSnackbarMessage('데이터 가져오기가 완료되었습니다.');
+        setSnackbarOpen(true);
+        setImportDialogOpen(false);
+        setImportData('');
+        onRefresh();
+      } else {
+        throw new Error('올바른 JSON 배열 형식이 아닙니다.');
+      }
     } catch (error) {
-      setSnackbarMessage(`가져오기 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+      console.error('데이터 가져오기 오류:', error);
+      setSnackbarMessage('데이터 가져오기 중 오류가 발생했습니다.');
       setSnackbarOpen(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // 데이터 초기화 (데모 모드만)
   const handleReset = async () => {
-    if (!isDemoMode || !dataService || !('resetData' in dataService)) return;
+    if (!dataService) return;
 
-    if (!window.confirm('모든 사용자 생성 테넌트가 삭제됩니다. 계속하시겠습니까?')) {
-      return;
-    }
-
-    try {
+    if (window.confirm('모든 테넌트 데이터를 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
       setLoading(true);
-      await dataService.resetData!();
-      
-      setSnackbarMessage('데모 데이터 초기화 완료!');
-      setSnackbarOpen(true);
-      onRefresh();
-    } catch (error) {
-      setSnackbarMessage(`초기화 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-      setSnackbarOpen(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getPresetColor = (preset: string) => {
-    switch (preset) {
-      case 'micro': return 'info';
-      case 'small': return 'success';
-      case 'medium': return 'warning';
-      case 'large': return 'error';
-      default: return 'default';
+      try {
+        await dataService.resetAllData();
+        setSnackbarMessage('데이터가 초기화되었습니다.');
+        setSnackbarOpen(true);
+        onRefresh();
+      } catch (error) {
+        console.error('데이터 초기화 오류:', error);
+        setSnackbarMessage('데이터 초기화 중 오류가 발생했습니다.');
+        setSnackbarOpen(true);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -470,7 +326,7 @@ export const TenantManager: React.FC<TenantManagerProps> = ({
         </Box>
       </Box>
 
-      {/* 테넌트 목록 - [advice from AI] 순수 조회/관리 기능만 유지 */}
+      {/* 테넌트 목록 */}
       {loading ? (
         <Box display="flex" justifyContent="center" py={4}>
           <CircularProgress />
@@ -665,25 +521,25 @@ export const TenantManager: React.FC<TenantManagerProps> = ({
               label="JSON 데이터"
               multiline
               rows={10}
+              fullWidth
               value={importData}
               onChange={(e) => setImportData(e.target.value)}
-              fullWidth
-              placeholder="내보낸 JSON 데이터를 여기에 붙여넣으세요..."
+              placeholder="JSON 형식의 테넌트 데이터를 입력하세요..."
             />
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setImportDialogOpen(false)}>취소</Button>
-          <Button onClick={handleImport} variant="contained" disabled={loading || !importData.trim()}>
+          <Button onClick={handleImport} variant="contained" disabled={!importData.trim() || loading}>
             {loading ? <CircularProgress size={20} /> : '가져오기'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* 스낵바 알림 */}
+      {/* 스낵바 */}
       <Snackbar
         open={snackbarOpen}
-        autoHideDuration={6000}
+        autoHideDuration={4000}
         onClose={() => setSnackbarOpen(false)}
         message={snackbarMessage}
       />
@@ -691,4 +547,4 @@ export const TenantManager: React.FC<TenantManagerProps> = ({
   );
 };
 
-export default TenantManager;
+export default TenantList;

@@ -33,10 +33,11 @@ from app.models.tenant_specs import (
     TenantMetrics
 )
 from app.core.ecp_calculator_adapter import ECPCalculatorAdapter
-from app.models.service_config import (
-    ServiceConfigurationManager, ServiceSpecificConfig, 
-    ServiceImageConfig, ServiceKubernetesConfig, BuildOptimizationLevel
-)
+# [advice from AI] ServiceConfigurationManager 제거 - 새로운 CICD 이미지 시스템으로 대체
+# from app.models.service_config import (
+#     ServiceConfigurationManager, ServiceSpecificConfig, 
+#     ServiceImageConfig, ServiceKubernetesConfig, BuildOptimizationLevel
+# )
 
 # [advice from AI] 데이터베이스 모델 임포트 추가
 from app.models.database import get_db, Tenant, Service, MonitoringData, DashboardConfig
@@ -86,12 +87,13 @@ def get_k8s_orchestrator() -> K8sOrchestrator:
     return k8s_orchestrator
 
 
-def get_service_config_manager() -> ServiceConfigurationManager:
-    """ServiceConfigurationManager 의존성 주입"""
-    global service_config_manager
-    if service_config_manager is None:
-        service_config_manager = ServiceConfigurationManager()
-    return service_config_manager
+# [advice from AI] ServiceConfigurationManager 제거 - 새로운 CICD 이미지 시스템으로 대체
+# def get_service_config_manager() -> ServiceConfigurationManager:
+#     """ServiceConfigurationManager 의존성 주입"""
+#     global service_config_manager
+#     if service_config_manager is None:
+#         service_config_manager = ServiceConfigurationManager()
+#     return service_config_manager
 
 
 # ==========================================
@@ -237,6 +239,7 @@ async def list_tenants(
         
         # 통계 계산
         total_count = len(tenants)
+        demo_count = len([t for t in tenants if t.is_demo])
         active_count = len([t for t in tenants if t.status in ["active", "running"]])
         
         return TenantListResponse(
@@ -270,7 +273,7 @@ async def get_tenant(tenant_id: str, db: Session = Depends(get_db)):
             )
         
         # 서비스 개수 계산
-        services_count = db.query(Service).filter(Service.tenant_id == tenant.id).count()
+        services_count = db.query(Service).filter(Service.tenant_id == tenant.tenant_id).count()
         
         return TenantSummary(
             tenant_id=tenant.tenant_id,
@@ -470,7 +473,7 @@ async def get_tenant(tenant_id: str, db: Session = Depends(get_db)):
             )
         
         # 서비스 개수 계산
-        services_count = db.query(Service).filter(Service.tenant_id == tenant.id).count()
+        services_count = db.query(Service).filter(Service.tenant_id == tenant.tenant_id).count()
         
         return TenantSummary(
             tenant_id=tenant.tenant_id,

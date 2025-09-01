@@ -162,9 +162,9 @@ services:
       dockerfile: Dockerfile
     container_name: ecp-frontend
     environment:
-      # API 연결 설정 (컨테이너 간 통신)
-      - REACT_APP_API_BASE_URL=http://backend:8000
-      - REACT_APP_WS_URL=ws://backend:8000/ws
+      # API 연결 설정 (브라우저에서 접근)
+      - REACT_APP_API_BASE_URL=http://localhost:8001
+      - REACT_APP_WS_URL=ws://localhost:8001/ws
       
       # ECP-AI UI 특화 설정
       - REACT_APP_SUPPORTED_GPU_TYPES=t4,v100,l40s

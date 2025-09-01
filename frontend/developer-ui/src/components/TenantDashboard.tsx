@@ -238,50 +238,7 @@ const presetRules = {
   }
 };
 
-// 데모 데이터
-const demoTenantData = {
-  tenant: {
-    id: 'test-download',
-    name: 'test-download',
-    status: 'running' as const,
-    preset: 'small' as const,
-    gpuCount: 3,
-    cpuCount: 31,
-    memoryGB: 16,
-    services: ['callbot', 'chatbot', 'advisor'],
-    createdAt: '2024-01-15T10:30:00Z',
-    owner: 'admin',
-    description: '콜센터 및 챗봇 서비스 테스트 환경'
-  },
-  resources: {
-    gpu: { total: 3, used: 2.1, percentage: 70, temperature: 65, power: 180 },
-    cpu: { total: 31, used: 22.3, percentage: 72, load: 0.72 },
-    memory: { total: 16, used: 11.2, percentage: 70, swap: 0 },
-    storage: { total: 100, used: 45.8, percentage: 46, iops: 1250 }
-  },
-  performance: {
-    responseTime: 45,
-    throughput: 1250,
-    errorRate: 0.2,
-    availability: 99.8,
-    uptime: 168
-  },
-  services: [
-    { name: 'callbot', icon: <CallIcon />, count: 15, status: 'healthy' as const, color: '#3b82f6', port: 8080, replicas: 3, targetReplicas: 3 },
-    { name: 'chatbot', icon: <ChatIcon />, count: 75, status: 'healthy' as const, color: '#10b981', port: 8081, replicas: 5, targetReplicas: 5 },
-    { name: 'advisor', icon: <PersonIcon />, count: 12, status: 'warning' as const, color: '#f59e0b', port: 8082, replicas: 2, targetReplicas: 3 },
-    { name: 'stt', icon: <VoiceIcon />, count: 8, status: 'healthy' as const, color: '#8b5cf6', port: 8083, replicas: 2, targetReplicas: 2 },
-    { name: 'tts', icon: <TTSIcon />, count: 6, status: 'healthy' as const, color: '#ec4899', port: 8084, replicas: 2, targetReplicas: 2 },
-    { name: 'qa', icon: <QAIcon />, count: 4, status: 'healthy' as const, color: '#06b6d4', port: 8085, replicas: 1, targetReplicas: 1 }
-  ],
-  logs: [
-    { id: '1', timestamp: '2분 전', level: 'info' as const, service: 'callbot', message: '새로운 콜 연결 수락됨' },
-    { id: '2', timestamp: '5분 전', level: 'warning' as const, service: 'advisor', message: 'GPU 메모리 사용률 85% 초과' },
-    { id: '3', timestamp: '8분 전', level: 'info' as const, service: 'chatbot', message: '사용자 세션 시작됨' },
-    { id: '4', timestamp: '12분 전', level: 'error' as const, service: 'stt', message: '음성 인식 서비스 일시적 오류' },
-    { id: '5', timestamp: '15분 전', level: 'info' as const, service: 'tts', message: 'TTS 캐시 히트율 92%' }
-  ]
-};
+// [advice from AI] 하드코딩 제거 - 실제 API 데이터만 사용
 
 // 상태 아이콘 컴포넌트
 const StatusIcon = ({ status }: { status: string }) => {

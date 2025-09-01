@@ -31,8 +31,9 @@ class K8sSimulatorClient:
     async def deploy_manifest(
         self, 
         manifest_content: str, 
-        tenant_id: str,
-        deployment_mode: str = "production"
+        tenant_id: str = "default",
+        deployment_mode: str = "production",
+        namespace: str = "default-ecp-ai"
     ) -> Dict[str, Any]:
         """매니페스트를 K8S Simulator에 배포
         
@@ -271,6 +272,77 @@ class K8sSimulatorClient:
         except:
             return False
     
+    async def get_service_status(
+        self, 
+        service_name: str, 
+        namespace: str = "default-ecp-ai"
+    ) -> Dict[str, Any]:
+        """특정 서비스의 배포 상태 조회
+        
+        Args:
+            service_name: 서비스 이름
+            namespace: 네임스페이스
+            
+        Returns:
+            서비스 배포 상태 정보
+        """
+        try:
+            response = await self.client.get(
+                f"{self.base_url}/k8s/service/{service_name}",
+                params={"namespace": namespace}
+            )
+            response.raise_for_status()
+            
+            service_data = response.json()
+            
+            # Mock 데이터로 응답 (실제로는 시뮬레이터에서 제공)
+            return {
+                "serviceName": service_name,
+                "desiredImage": f"harbor.company.com/ecp-ai/{service_name}:latest",
+                "currentImage": f"harbor.company.com/ecp-ai/{service_name}:latest",
+                "replicas": {
+                    "desired": 2,
+                    "ready": 2,
+                    "available": 2,
+                    "updated": 2
+                },
+                "pods": [
+                    {
+                        "podName": f"{service_name}-deployment-abc123",
+                        "status": "Running",
+                        "currentImage": f"harbor.company.com/ecp-ai/{service_name}:latest",
+                        "ready": True,
+                        "restarts": 0,
+                        "createdAt": datetime.utcnow().isoformat(),
+                        "nodeName": "worker-node-1"
+                    },
+                    {
+                        "podName": f"{service_name}-deployment-def456",
+                        "status": "Running",
+                        "currentImage": f"harbor.company.com/ecp-ai/{service_name}:latest",
+                        "ready": True,
+                        "restarts": 0,
+                        "createdAt": datetime.utcnow().isoformat(),
+                        "nodeName": "worker-node-2"
+                    }
+                ],
+                "deploymentStatus": "Running",
+                "lastUpdated": datetime.utcnow().isoformat()
+            }
+            
+        except httpx.HTTPError as e:
+            logger.error(f"Service status check failed for {service_name}: {e}")
+            # 오류 시에도 기본 Mock 데이터 반환
+            return {
+                "serviceName": service_name,
+                "desiredImage": f"harbor.company.com/ecp-ai/{service_name}:latest",
+                "currentImage": f"harbor.company.com/ecp-ai/{service_name}:latest",
+                "replicas": {"desired": 0, "ready": 0, "available": 0, "updated": 0},
+                "pods": [],
+                "deploymentStatus": "Unknown",
+                "lastUpdated": datetime.utcnow().isoformat()
+            }
+
     async def close(self):
         """클라이언트 연결 종료"""
         if self.client:
