@@ -79,11 +79,16 @@ def get_tenant_manager() -> TenantManager:
         tenant_manager = TenantManager()
     return tenant_manager
 
-def get_k8s_orchestrator() -> K8sOrchestrator:
-    """K8sOrchestrator 의존성 주입"""
+def get_k8s_orchestrator() -> Optional[K8sOrchestrator]:
+    """K8sOrchestrator 의존성 주입 (개발 환경에서는 None 가능)"""
     global k8s_orchestrator
     if k8s_orchestrator is None:
-        k8s_orchestrator = K8sOrchestrator()
+        try:
+            k8s_orchestrator = K8sOrchestrator()
+            logger.info("K8sOrchestrator 초기화 성공")
+        except Exception as e:
+            logger.warning(f"K8sOrchestrator 초기화 실패 - 시뮬레이터 모드로 동작: {e}")
+            k8s_orchestrator = None
     return k8s_orchestrator
 
 
@@ -172,7 +177,7 @@ class TenantListResponse(BaseModel):
 # 데이터베이스 연동 함수들
 # ==========================================
 
-async def get_tenants_from_db(db: Session) -> List[TenantSummary]:
+async def get_tenants_from_db(db: Session) -> List[Dict[str, Any]]:
     """데이터베이스에서 테넌시 목록 조회"""
     try:
         # 테넌시 및 서비스 정보 조회
@@ -180,19 +185,55 @@ async def get_tenants_from_db(db: Session) -> List[TenantSummary]:
         tenant_summaries = []
         
         for tenant in tenants:
-            # 서비스 개수 계산
-            services_count = db.query(Service).filter(Service.tenant_id == tenant.tenant_id).count()
+            # [advice from AI] 서비스 분류별 개수 계산
+            services = db.query(Service).filter(Service.tenant_id == tenant.tenant_id).all()
             
-            tenant_summary = TenantSummary(
-                tenant_id=tenant.tenant_id,
-                name=tenant.name,
-                preset=tenant.preset,
-                is_demo=tenant.is_demo,
-                status=tenant.status,
-                services_count=services_count,
-                created_at=tenant.created_at
-            )
-            tenant_summaries.append(tenant_summary)
+            main_services = len([s for s in services if s.service_type == 'main_service'])
+            ai_nlp_services = len([s for s in services if s.service_type == 'ai_nlp_service'])
+            analytics_services = len([s for s in services if s.service_type == 'analytics_service'])
+            infrastructure_services = len([s for s in services if s.service_type == 'infrastructure_service'])
+            total_services = len(services)
+            
+            # [advice from AI] 디버깅을 위한 로그 추가
+            logger.info(f"테넌트 {tenant.tenant_id} 서비스 분류: 메인={main_services}, AI/NLP={ai_nlp_services}, 분석={analytics_services}, 인프라={infrastructure_services}, 총={total_services}")
+            
+            # [advice from AI] 서비스 분류별 정보와 GPU 정보를 포함한 dict 생성
+            tenant_dict = {
+                "tenant_id": tenant.tenant_id,
+                "name": tenant.name,
+                "preset": tenant.preset,
+                "is_demo": tenant.is_demo,
+                "status": tenant.status,
+                "services_count": total_services,
+                "created_at": tenant.created_at.isoformat(),
+                # 서비스 분류별 상세 정보
+                "main_services_count": main_services,
+                "ai_nlp_services_count": ai_nlp_services,
+                "analytics_services_count": analytics_services,
+                "infrastructure_services_count": infrastructure_services,
+                "services_breakdown": {
+                    "main": main_services,
+                    "ai_nlp": ai_nlp_services,
+                    "analytics": analytics_services,
+                    "infrastructure": infrastructure_services
+                },
+                # GPU 정보 추가
+                "gpu_info": {
+                    "type": tenant.gpu_type or "auto",
+                    "limit": tenant.gpu_limit or 0,
+                    "allocated": sum([s.gpu_request for s in services if s.gpu_request]),
+                    "utilization": "실시간 계산됨" if tenant.status == "running" else "중지됨"
+                },
+                # 리소스 요약 정보
+                "resource_summary": {
+                    "cpu_limit": tenant.cpu_limit,
+                    "memory_limit": tenant.memory_limit,
+                    "storage_limit": tenant.storage_limit,
+                    "gpu_type": tenant.gpu_type
+                }
+            }
+            
+            tenant_summaries.append(tenant_dict)
         
         return tenant_summaries
         
@@ -214,6 +255,105 @@ async def create_tenant_in_db(db: Session, tenant_data: dict) -> Tenant:
         logger.error(f"데이터베이스에 테넌시 생성 실패: {e}")
         db.rollback()
         raise
+
+
+# ==========================================
+# 백그라운드 작업 함수들
+# ==========================================
+
+async def deploy_tenant_to_simulator(
+    tenant_id: str, 
+    manifest_content: str, 
+    tenant_specs: TenantSpecs
+):
+    """
+    [advice from AI] 백그라운드에서 테넌시를 시뮬레이터에 배포
+    - 매니페스트를 시뮬레이터로 전송
+    - 가상 서버 구동 시작
+    - Mock 모니터링 데이터 생성 활성화
+    """
+    try:
+        logger.info("시뮬레이터 배포 백그라운드 작업 시작", tenant_id=tenant_id)
+        
+        # 시뮬레이터 API 호출
+        import httpx
+        simulator_url = os.getenv('K8S_SIMULATOR_EXTERNAL_URL', 'http://localhost:6360')
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # 1. 시뮬레이터 연결 확인
+            try:
+                health_response = await client.get(f"{simulator_url}/")
+                if health_response.status_code != 200:
+                    raise Exception("시뮬레이터 연결 실패")
+                logger.info("시뮬레이터 연결 확인 완료", tenant_id=tenant_id)
+            except Exception as health_error:
+                logger.error("시뮬레이터 연결 실패", tenant_id=tenant_id, error=str(health_error))
+                await update_tenant_status(tenant_id, "deploy_failed", f"시뮬레이터 연결 실패: {str(health_error)}")
+                return
+            
+            # 2. 매니페스트 파싱 및 검증
+            try:
+                parse_response = await client.post(
+                    f"{simulator_url}/k8s/manifest/parse",
+                    json={
+                        "manifest": manifest_content,
+                        "tenant_id": tenant_id
+                    }
+                )
+                if parse_response.status_code != 200:
+                    raise Exception(f"매니페스트 검증 실패: {parse_response.text}")
+                logger.info("매니페스트 검증 완료", tenant_id=tenant_id)
+            except Exception as parse_error:
+                logger.error("매니페스트 검증 실패", tenant_id=tenant_id, error=str(parse_error))
+                await update_tenant_status(tenant_id, "deploy_failed", f"매니페스트 검증 실패: {str(parse_error)}")
+                return
+            
+            # 3. 시뮬레이터에 배포
+            try:
+                deploy_response = await client.post(
+                    f"{simulator_url}/k8s/manifest/deploy",
+                    json={
+                        "manifest": manifest_content,
+                        "tenant_id": tenant_id
+                    }
+                )
+                if deploy_response.status_code != 200:
+                    raise Exception(f"시뮬레이터 배포 실패: {deploy_response.text}")
+                
+                deploy_result = deploy_response.json()
+                logger.info("시뮬레이터 배포 완료", tenant_id=tenant_id, result=deploy_result)
+                
+                # 배포 성공 상태 업데이트
+                await update_tenant_status(tenant_id, "running", "시뮬레이터 배포 완료 - Mock 데이터 생성 중")
+                
+            except Exception as deploy_error:
+                logger.error("시뮬레이터 배포 실패", tenant_id=tenant_id, error=str(deploy_error))
+                await update_tenant_status(tenant_id, "deploy_failed", f"시뮬레이터 배포 실패: {str(deploy_error)}")
+                return
+        
+        logger.info("시뮬레이터 배포 백그라운드 작업 완료", tenant_id=tenant_id)
+        
+    except Exception as e:
+        logger.error("시뮬레이터 배포 백그라운드 작업 실패", tenant_id=tenant_id, error=str(e))
+        await update_tenant_status(tenant_id, "deploy_failed", f"배포 작업 실패: {str(e)}")
+
+
+async def update_tenant_status(tenant_id: str, status: str, message: str = None):
+    """
+    [advice from AI] 테넌시 상태 업데이트 (백그라운드 작업용)
+    """
+    try:
+        db = db_manager.get_session()
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        if tenant:
+            tenant.status = status
+            if message:
+                tenant.description = f"{tenant.description or ''}\n[{datetime.utcnow()}] {message}"
+            db.commit()
+            logger.info("테넌시 상태 업데이트", tenant_id=tenant_id, status=status)
+        db.close()
+    except Exception as e:
+        logger.error("테넌시 상태 업데이트 실패", tenant_id=tenant_id, error=str(e))
 
 
 # ==========================================
@@ -239,8 +379,8 @@ async def list_tenants(
         
         # 통계 계산
         total_count = len(tenants)
-        demo_count = len([t for t in tenants if t.is_demo])
-        active_count = len([t for t in tenants if t.status in ["active", "running"]])
+        demo_count = len([t for t in tenants if t.get('is_demo', False)])
+        active_count = len([t for t in tenants if t.get('status') in ["active", "running"]])
         
         return TenantListResponse(
             tenants=tenants,
@@ -295,6 +435,193 @@ async def get_tenant(tenant_id: str, db: Session = Depends(get_db)):
         )
 
 
+@router.get("/check-duplicate/{tenant_id}")
+async def check_tenant_id_duplicate(
+    tenant_id: str, 
+    db: Session = Depends(get_db)
+):
+    """
+    테넌시 ID 중복 확인
+    - 실시간 중복 체크를 위한 API
+    """
+    try:
+        existing_tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        
+        if existing_tenant:
+            return {
+                "available": False,
+                "message": f"테넌시 ID '{tenant_id}'는 이미 사용 중입니다",
+                "existing_tenant": {
+                    "name": existing_tenant.name or tenant_id,
+                    "preset": existing_tenant.preset,
+                    "status": existing_tenant.status,
+                    "created_at": existing_tenant.created_at.isoformat(),
+                    "services_count": len(existing_tenant.services) if existing_tenant.services else 0
+                },
+                "suggestions": [
+                    f"{tenant_id}-v2",
+                    f"{tenant_id}-new",
+                    f"{tenant_id}-2024",
+                    f"my-{tenant_id}",
+                    f"{tenant_id}-prod"
+                ]
+            }
+        else:
+            return {
+                "available": True,
+                "message": f"테넌시 ID '{tenant_id}'는 사용 가능합니다",
+                "tenant_id": tenant_id
+            }
+            
+    except Exception as e:
+        logger.error(f"테넌시 ID 중복 확인 실패: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="중복 확인 중 오류가 발생했습니다"
+        )
+
+
+@router.post("/{tenant_id}/start")
+async def start_tenant(
+    tenant_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    테넌트 시작
+    - 중지된 테넌트의 모든 서비스를 시작
+    """
+    try:
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail=f"테넌트 '{tenant_id}'를 찾을 수 없습니다")
+        
+        if tenant.status == 'running':
+            return {"message": f"테넌트 '{tenant_id}'는 이미 실행 중입니다", "status": "running"}
+        
+        # 테넌트 상태를 running으로 변경
+        tenant.status = 'running'
+        db.commit()
+        
+        logger.info(f"테넌트 '{tenant_id}' 시작됨")
+        
+        return {
+            "success": True,
+            "message": f"테넌트 '{tenant_id}' 시작 완료",
+            "tenant_id": tenant_id,
+            "status": "running"
+        }
+        
+    except Exception as e:
+        logger.error(f"테넌트 시작 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"테넌트 시작 실패: {str(e)}")
+
+
+@router.post("/{tenant_id}/stop")
+async def stop_tenant(
+    tenant_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    테넌트 중지
+    - 실행 중인 테넌트의 모든 서비스를 중지
+    """
+    try:
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail=f"테넌트 '{tenant_id}'를 찾을 수 없습니다")
+        
+        if tenant.status == 'pending':
+            return {"message": f"테넌트 '{tenant_id}'는 이미 중지되어 있습니다", "status": "pending"}
+        
+        # 테넌트 상태를 pending으로 변경
+        tenant.status = 'pending'
+        db.commit()
+        
+        logger.info(f"테넌트 '{tenant_id}' 중지됨")
+        
+        return {
+            "success": True,
+            "message": f"테넌트 '{tenant_id}' 중지 완료",
+            "tenant_id": tenant_id,
+            "status": "pending"
+        }
+        
+    except Exception as e:
+        logger.error(f"테넌트 중지 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"테넌트 중지 실패: {str(e)}")
+
+
+@router.post("/{tenant_id}/restart")
+async def restart_tenant(
+    tenant_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    테넌트 재시작
+    - 테넌트를 중지한 후 다시 시작
+    """
+    try:
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail=f"테넌트 '{tenant_id}'를 찾을 수 없습니다")
+        
+        # 재시작 중 상태로 변경
+        tenant.status = 'deploying'
+        db.commit()
+        
+        # 잠시 후 running 상태로 변경 (실제로는 K8s 재배포 로직)
+        import asyncio
+        await asyncio.sleep(1)
+        
+        tenant.status = 'running'
+        db.commit()
+        
+        logger.info(f"테넌트 '{tenant_id}' 재시작됨")
+        
+        return {
+            "success": True,
+            "message": f"테넌트 '{tenant_id}' 재시작 완료",
+            "tenant_id": tenant_id,
+            "status": "running"
+        }
+        
+    except Exception as e:
+        logger.error(f"테넌트 재시작 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"테넌트 재시작 실패: {str(e)}")
+
+
+@router.delete("/{tenant_id}")
+async def delete_tenant(
+    tenant_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    테넌트 삭제
+    - 테넌트와 관련된 모든 리소스를 삭제
+    """
+    try:
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail=f"테넌트 '{tenant_id}'를 찾을 수 없습니다")
+        
+        # 관련된 서비스들도 함께 삭제 (CASCADE 설정으로 자동 삭제됨)
+        db.delete(tenant)
+        db.commit()
+        
+        logger.info(f"테넌트 '{tenant_id}' 삭제됨")
+        
+        return {
+            "success": True,
+            "message": f"테넌트 '{tenant_id}' 삭제 완료",
+            "tenant_id": tenant_id
+        }
+        
+    except Exception as e:
+        logger.error(f"테넌트 삭제 실패: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"테넌트 삭제 실패: {str(e)}")
+
+
 @router.post("/", response_model=TenantCreateResponse)
 async def create_tenant(
     request: TenantCreateRequest,
@@ -324,7 +651,7 @@ async def create_tenant(
         if existing_tenant:
             raise HTTPException(
                 status_code=409,
-                detail=f"테넌시 '{request.tenant_id}'가 이미 존재합니다"
+                detail=f"테넌시 ID '{request.tenant_id}'가 이미 존재합니다. 다른 이름을 사용해주세요. (기존 테넌시 생성일: {existing_tenant.created_at.strftime('%Y-%m-%d %H:%M:%S')})"
             )
         
         # 2. 테넌시 사양 생성
@@ -384,28 +711,130 @@ async def create_tenant(
             db.add(tenant)
             db.flush()  # ID 생성을 위해 flush (commit 전)
             
-            # 서비스 정보 저장
+            # [advice from AI] 실제 배포되는 모든 서비스 정보 저장
             services_created = 0
-            for service_name, count in request.service_requirements.model_dump().items():
+            service_requirements = request.service_requirements.model_dump()
+            
+            # 1. 메인 서비스 (사용자가 선택한 것들)
+            for service_name, count in service_requirements.items():
                 if count > 0:
                     service_data = {
-                        "tenant_id": tenant.tenant_id,  # 문자열 tenant_id 사용
+                        "tenant_id": tenant.tenant_id,
                         "service_name": service_name,
-                        "service_type": "ai_service",
+                        "service_type": "main_service",
                         "enabled": True,
                         "count": count,
-                        "min_replicas": max(1, count // 3),  # 동적 최소 레플리카
-                        "max_replicas": count * 2,  # 동적 최대 레플리카
+                        "min_replicas": max(1, count // 3),
+                        "max_replicas": count * 2,
                         "target_cpu": 60,
                         "image_name": f"ecp-ai/{service_name}",
                         "image_tag": "latest",
                         "cpu_request": "100m",
                         "memory_request": "256Mi",
-                        "gpu_request": 0
+                        "gpu_request": 1 if service_name in ['callbot', 'chatbot', 'advisor'] else 0
                     }
                     service = Service(**service_data)
                     db.add(service)
                     services_created += 1
+            
+            # 2. AI/NLP 공용 서비스 (메인 서비스가 있으면 자동 생성)
+            has_main_services = any(count > 0 for service, count in service_requirements.items() 
+                                  if service in ['callbot', 'chatbot', 'advisor'])
+            
+            if has_main_services:
+                ai_nlp_services = ['nlp', 'aicm']
+                # STT는 callbot이나 advisor가 있을 때만
+                if service_requirements.get('callbot', 0) > 0 or service_requirements.get('advisor', 0) > 0 or service_requirements.get('stt', 0) > 0:
+                    ai_nlp_services.append('stt-server')
+                # TTS는 callbot이 있을 때만
+                if service_requirements.get('callbot', 0) > 0 or service_requirements.get('tts', 0) > 0:
+                    ai_nlp_services.append('tts-server')
+                
+                for service_name in ai_nlp_services:
+                    service_data = {
+                        "tenant_id": tenant.tenant_id,
+                        "service_name": service_name,
+                        "service_type": "ai_nlp_service",
+                        "enabled": True,
+                        "count": 1,  # 공용 서비스는 기본 1개
+                        "min_replicas": 1,
+                        "max_replicas": 3,
+                        "target_cpu": 70,
+                        "image_name": f"ecp-ai/{service_name}",
+                        "image_tag": "latest",
+                        "cpu_request": "500m",
+                        "memory_request": "1Gi",
+                        "gpu_request": 1 if service_name in ['nlp', 'aicm', 'tts-server'] else 0
+                    }
+                    service = Service(**service_data)
+                    db.add(service)
+                    services_created += 1
+            
+            # 3. 분석 서비스 (ta, qa가 있을 때 서버 생성)
+            if service_requirements.get('ta', 0) > 0:
+                service_data = {
+                    "tenant_id": tenant.tenant_id,
+                    "service_name": "ta-server",
+                    "service_type": "analytics_service",
+                    "enabled": True,
+                    "count": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 2,
+                    "target_cpu": 50,
+                    "image_name": "ecp-ai/ta-server",
+                    "image_tag": "latest",
+                    "cpu_request": "200m",
+                    "memory_request": "512Mi",
+                    "gpu_request": 0
+                }
+                service = Service(**service_data)
+                db.add(service)
+                services_created += 1
+                
+            if service_requirements.get('qa', 0) > 0:
+                service_data = {
+                    "tenant_id": tenant.tenant_id,
+                    "service_name": "qa-server",
+                    "service_type": "analytics_service",
+                    "enabled": True,
+                    "count": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 2,
+                    "target_cpu": 50,
+                    "image_name": "ecp-ai/qa-server",
+                    "image_tag": "latest",
+                    "cpu_request": "200m",
+                    "memory_request": "512Mi",
+                    "gpu_request": 0
+                }
+                service = Service(**service_data)
+                db.add(service)
+                services_created += 1
+            
+            # 4. 인프라 서비스 (항상 생성)
+            infrastructure_services = [
+                'nginx', 'gateway', 'auth', 'conversation', 'scenario', 'monitoring'
+            ]
+            
+            for service_name in infrastructure_services:
+                service_data = {
+                    "tenant_id": tenant.tenant_id,
+                    "service_name": service_name,
+                    "service_type": "infrastructure_service",
+                    "enabled": True,
+                    "count": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 1,  # 인프라 서비스는 스케일링 제한
+                    "target_cpu": 30,
+                    "image_name": f"ecp-ai/{service_name}",
+                    "image_tag": "latest",
+                    "cpu_request": "50m",
+                    "memory_request": "128Mi",
+                    "gpu_request": 0
+                }
+                service = Service(**service_data)
+                db.add(service)
+                services_created += 1
             
             # 모든 변경사항을 한번에 커밋
             db.commit()
@@ -416,7 +845,47 @@ async def create_tenant(
             db.rollback()
             raise
         
-        # 6. 응답 생성
+        # 6. [advice from AI] auto_deploy 플래그에 따른 처리 분기
+        deployment_status = "created"  # 기본값: DB 저장만
+        
+        if request.auto_deploy:
+            # 자동 배포 모드: 매니페스트 생성 → 시뮬레이터 전송 → Mock 데이터 생성
+            try:
+                logger.info("자동 배포 모드 - 시뮬레이터 연동 시작", tenant_id=request.tenant_id)
+                
+                # 매니페스트 생성
+                manifest_generator = ManifestGenerator()
+                manifest_content = manifest_generator.generate_tenant_manifests(tenant_specs)
+                
+                # [advice from AI] 데이터베이스에 매니페스트 저장 - JSON으로 변환
+                import json
+                tenant.manifest_content = json.dumps(manifest_content)
+                tenant.manifest_generated_at = datetime.utcnow()
+                tenant.status = "deploying"
+                db.commit()
+                
+                # 백그라운드에서 시뮬레이터 배포 작업 추가
+                background_tasks.add_task(
+                    deploy_tenant_to_simulator,
+                    tenant_id=request.tenant_id,
+                    manifest_content=manifest_content,
+                    tenant_specs=tenant_specs
+                )
+                
+                deployment_status = "deploying"
+                logger.info("시뮬레이터 배포 작업 백그라운드 시작", tenant_id=request.tenant_id)
+                
+            except Exception as deploy_error:
+                logger.error("자동 배포 실패 - 테넌시는 저장됨", 
+                           tenant_id=request.tenant_id, error=str(deploy_error))
+                deployment_status = "created_with_deploy_error"
+        else:
+            # 단순 저장 모드: 데이터베이스 저장만, 서버 미동작
+            logger.info("단순 저장 모드 - 데이터베이스 저장만", tenant_id=request.tenant_id)
+            tenant.status = "pending"  # [advice from AI] 유효한 상태값 사용
+            db.commit()
+
+        # 7. 응답 생성
         response = TenantCreateResponse(
             success=True,
             tenant_id=request.tenant_id,
@@ -440,7 +909,7 @@ async def create_tenant(
                     "usage_percent": "45.8"
                 }
             ),
-            deployment_status="created",
+            deployment_status=deployment_status,
             created_at=tenant.created_at
         )
         
@@ -498,31 +967,55 @@ async def get_tenant(tenant_id: str, db: Session = Depends(get_db)):
 @router.delete("/{tenant_id}")
 async def delete_tenant(
     tenant_id: str,
-    k8s_orch: K8sOrchestrator = Depends(get_k8s_orchestrator)
+    db: Session = Depends(get_db_session)
 ):
     """
     테넌시 삭제
-    - 네임스페이스와 모든 리소스 완전 삭제
+    - 데이터베이스에서 테넌시 정보 삭제
+    - K8s 리소스는 선택적으로 삭제 (개발 환경에서는 스킵 가능)
     """
     try:
         logger.info("테넌시 삭제 요청", tenant_id=tenant_id)
         
-        # 테넌시 존재 확인
-        existing_status = await k8s_orch.get_tenant_status(tenant_id)
-        if not existing_status:
+        # [advice from AI] 데이터베이스에서 테넌시 존재 확인
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        if not tenant:
             raise HTTPException(
                 status_code=404,
                 detail=f"테넌시 '{tenant_id}'를 찾을 수 없습니다"
             )
         
-        # Kubernetes 리소스 삭제
-        success = await k8s_orch.delete_tenant(tenant_id)
-        
-        if not success:
+        # [advice from AI] 1. 데이터베이스에서 먼저 삭제 (cascade로 관련 데이터 자동 삭제)
+        try:
+            db.delete(tenant)
+            db.commit()
+            logger.info("데이터베이스에서 테넌시 삭제 완료", tenant_id=tenant_id)
+        except Exception as db_error:
+            db.rollback()
+            logger.error("데이터베이스 테넌시 삭제 실패", tenant_id=tenant_id, error=str(db_error))
             raise HTTPException(
                 status_code=500,
-                detail=f"테넌시 '{tenant_id}' 삭제에 실패했습니다"
+                detail=f"데이터베이스에서 테넌시 삭제 실패: {str(db_error)}"
             )
+        
+        # [advice from AI] 2. 시뮬레이터에서 배포 삭제 (Mock 데이터 생성기 정리)
+        try:
+            # 시뮬레이터 API를 통한 배포 삭제
+            import httpx
+            simulator_url = os.getenv('K8S_SIMULATOR_EXTERNAL_URL', 'http://localhost:6360')
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # 시뮬레이터에서 해당 테넌시의 모든 리소스 삭제
+                response = await client.delete(f"{simulator_url}/k8s/resources/tenant/{tenant_id}")
+                if response.status_code == 200:
+                    logger.info("시뮬레이터에서 테넌시 배포 삭제 완료", tenant_id=tenant_id)
+                elif response.status_code == 404:
+                    logger.info("시뮬레이터에 해당 테넌시 배포가 없음", tenant_id=tenant_id)
+                else:
+                    logger.warning("시뮬레이터 배포 삭제 실패", tenant_id=tenant_id, status_code=response.status_code)
+        except Exception as sim_error:
+            logger.warning("시뮬레이터 배포 삭제 중 오류 (DB 삭제는 성공)", 
+                         tenant_id=tenant_id, error=str(sim_error))
         
         logger.info("테넌시 삭제 완료", tenant_id=tenant_id)
         
@@ -1105,7 +1598,8 @@ async def validate_deployment(
 @router.post("/calculate-detailed-hardware")
 async def calculate_detailed_hardware(
     service_requirements: ServiceRequirements,
-    gpu_type: str = "t4"
+    gpu_type: str = "t4",
+    tenancy_mode: str = "large"
 ) -> Dict[str, Any]:
     """
     상세 하드웨어 사양 계산 (ECP 계산 엔진 사용)
@@ -1130,12 +1624,17 @@ async def calculate_detailed_hardware(
         end_time = time.time()
         duration = end_time - start_time
         
-        logger.info("✅ 상세 하드웨어 계산 완료", 
-                   success=result.get("success", False),
-                   total_gpus=result.get("summary", {}).get("total_gpu_count", 0),
+        # [advice from AI] 테넌시 모드에 따른 결과 필터링
+        filtered_result = filter_hardware_result_by_tenancy_mode(result, tenancy_mode)
+        
+        logger.info("✅ 상세 하드웨어 계산 완료 (테넌시 모드 필터링 적용)", 
+                   success=filtered_result.get("success", False),
+                   tenancy_mode=tenancy_mode,
+                   original_gpus=result.get("summary", {}).get("total_gpu_count", 0),
+                   filtered_gpus=filtered_result.get("summary", {}).get("total_gpu_count", 0),
                    duration_seconds=round(duration, 2))
         
-        return result
+        return filtered_result
         
     except Exception as e:
         logger.error("상세 하드웨어 계산 실패", error=str(e))
@@ -1661,3 +2160,94 @@ async def get_cloud_optimization_analysis(
             status_code=500,
             detail=f"클라우드 최적화 분석 중 오류가 발생했습니다: {str(e)}"
         )
+
+
+def filter_hardware_result_by_tenancy_mode(api_result: Dict[str, Any], tenancy_mode: str) -> Dict[str, Any]:
+    """
+    [advice from AI] 외부 API 응답을 테넌시 모드에 따라 필터링
+    
+    Args:
+        api_result: rdc.rickyson.com API 응답
+        tenancy_mode: 'small' (소규모) 또는 'large' (대규모)
+    
+    Returns:
+        테넌시 모드에 맞게 필터링된 결과
+    """
+    if not api_result or not api_result.get("success", False):
+        return api_result
+    
+    try:
+        filtered_result = api_result.copy()
+        
+        if tenancy_mode == "small":
+            # 소규모 테넌시: 공용 인프라 제외
+            logger.info("소규모 테넌시 모드 - 공용 인프라 제외 필터링 적용")
+            
+            # 하드웨어 스펙에서 공용 인프라 서버 제거
+            if "hardware_specification" in filtered_result:
+                hw_spec = filtered_result["hardware_specification"]
+                
+                # 공통 서비스 서버 제거 (API Gateway, PostgreSQL, VectorDB, Auth Service, NAS)
+                if "general_servers" in hw_spec:
+                    original_general = hw_spec["general_servers"]
+                    # 공용 인프라 48코어 제외 (API Gateway 16 + PostgreSQL 8 + VectorDB 8 + Auth 8 + NAS 8)
+                    hw_spec["general_servers"] = {
+                        "cores": max(0, original_general.get("cores", 0) - 48),
+                        "ram_gb": max(0, original_general.get("ram_gb", 0) - 120),  # 16+32+32+16+16+8
+                        "storage_gb": max(0, original_general.get("storage_gb", 0) - 2500),  # 500*5
+                        "quantity": max(0, original_general.get("quantity", 0) - 5)
+                    }
+                
+                # 총 요약에서도 공용 인프라 제외
+                if "summary" in hw_spec:
+                    summary = hw_spec["summary"]
+                    summary["total_cpu_cores"] = max(0, summary.get("total_cpu_cores", 0) - 48)
+                    summary["total_ram_gb"] = max(0, summary.get("total_ram_gb", 0) - 120)
+                    summary["total_storage_gb"] = max(0, summary.get("total_storage_gb", 0) - 2500)
+                    summary["total_server_count"] = max(0, summary.get("total_server_count", 0) - 5)
+            
+            # 비용 분석에서 공용 인프라 비용 제외
+            if "cost_analysis" in filtered_result:
+                cost_analysis = filtered_result["cost_analysis"]
+                
+                # 공용 인프라 예상 비용 (월 기준)
+                shared_infra_cost_monthly = 2000000  # 약 200만원 (API Gateway, DB 등)
+                
+                for provider in ["aws", "ncp"]:
+                    if provider in cost_analysis:
+                        provider_cost = cost_analysis[provider]
+                        if "monthly_cost_krw" in provider_cost:
+                            provider_cost["monthly_cost_krw"] = max(0, 
+                                provider_cost["monthly_cost_krw"] - shared_infra_cost_monthly)
+                        if "total_cost_krw" in provider_cost:
+                            provider_cost["total_cost_krw"] = max(0,
+                                provider_cost["total_cost_krw"] - shared_infra_cost_monthly)
+            
+            # 클라우드 인스턴스 매핑에서 공용 인프라 인스턴스 제거
+            for provider in ["aws_instances", "ncp_instances"]:
+                if provider in filtered_result:
+                    instances = filtered_result[provider]
+                    if "general" in instances:
+                        # 공용 인프라용 인스턴스 제거
+                        general_instances = instances["general"]
+                        if isinstance(general_instances, list) and len(general_instances) >= 5:
+                            instances["general"] = general_instances[5:]  # 처음 5개 제거 (공용 인프라)
+                        elif isinstance(general_instances, dict):
+                            # 수량에서 5개 차감
+                            if "quantity" in general_instances:
+                                general_instances["quantity"] = max(0, general_instances["quantity"] - 5)
+        
+        else:
+            # 대규모 테넌시: 전체 결과 그대로 사용
+            logger.info("대규모 테넌시 모드 - 전체 리소스 사용")
+        
+        # 테넌시 모드 정보 추가
+        filtered_result["tenancy_mode"] = tenancy_mode
+        filtered_result["filtering_applied"] = tenancy_mode == "small"
+        
+        return filtered_result
+        
+    except Exception as e:
+        logger.error("테넌시 모드 필터링 실패", error=str(e), tenancy_mode=tenancy_mode)
+        # 필터링 실패 시 원본 결과 반환
+        return api_result

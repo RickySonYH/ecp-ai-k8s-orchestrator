@@ -7,7 +7,7 @@
  * - Material-UI 반응형 디자인
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -39,11 +39,13 @@ import {
   ExpandLess as ExpandLessIcon,
   Rocket as RocketIcon,
   Memory as MemoryIcon,
-  Speed as SpeedIcon
+  Speed as SpeedIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { DeploymentWizard } from './DeploymentWizard.tsx';
-import { HardwareSpecCalculator } from './HardwareSpecCalculator.tsx';
+import { DeploymentWizard } from './DeploymentWizard';
+import { HardwareSpecCalculator } from './HardwareSpecCalculator';
 
 // 타입 정의
 interface ServiceRequirements {
@@ -65,6 +67,7 @@ interface ResourceEstimation {
   aicm_queries_daily: number;
   total_channels: number;
   total_users: number;
+  tenancy_mode: string;
 }
 
 interface TenantCreatorProps {
@@ -104,7 +107,7 @@ const MetricChip = styled(Chip)(({ theme }) => ({
 export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, onTenantSaved, isDemoMode = false }) => {
   // 상태 관리
   const [tenantId, setTenantId] = useState('');
-  const [gpuType, setGpuType] = useState<'auto' | 't4' | 'v100' | 'l40s'>('auto');
+  const [tenancyMode, setTenancyMode] = useState<'small' | 'large'>('small');
   // [advice from AI] 클라우드 제공업체 선택을 매니페스트 생성 후로 이동
   const [services, setServices] = useState<ServiceRequirements>({
     callbot: 0,
@@ -117,14 +120,232 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // [advice from AI] 테넌트 ID 중복 체크 상태 추가
+  const [tenantIdStatus, setTenantIdStatus] = useState<{
+    checking: boolean;
+    available: boolean | null;
+    message: string;
+    suggestions?: string[];
+  }>({
+    checking: false,
+    available: null,
+    message: ''
+  });
 
   const [showCalculation, setShowCalculation] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const [showHardwareSpec, setShowHardwareSpec] = useState(false);
   
+  // [advice from AI] 인스턴스 상세 정보 다이얼로그 상태 추가
+  const [instanceDetailOpen, setInstanceDetailOpen] = useState(false);
+  const [selectedInstanceInfo, setSelectedInstanceInfo] = useState<any>(null);
+  
   // [advice from AI] 저장 관련 상태 추가
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
+  // [advice from AI] 인스턴스 상세 정보 표시 함수
+  const showInstanceDetail = (serviceName: string, serviceType: 'main' | 'infra') => {
+    let detailInfo;
+    
+    if (serviceType === 'main') {
+      // 메인 서비스 상세 정보
+      const count = services[serviceName as keyof ServiceRequirements];
+      detailInfo = {
+        name: serviceName.toUpperCase(),
+        type: '메인 서비스',
+        capacity: serviceName === 'chatbot' ? `${count}명 동시사용자` : `${count}채널 처리능력`,
+        deployment: {
+          replicas: 1,
+          scaling: 'HPA 자동 스케일링 (1-10개)',
+          resources: getMainServiceResources(serviceName, count),
+          ports: getMainServicePorts(serviceName),
+          environment: getMainServiceEnv(serviceName),
+          volumes: getMainServiceVolumes(serviceName)
+        },
+        dependencies: getServiceDependencies(serviceName),
+        tenancyMode: tenancyMode
+      };
+    } else {
+      // 인프라 서비스 상세 정보
+      detailInfo = {
+        name: serviceName.toUpperCase(),
+        type: tenancyMode === 'small' ? '공용 인프라' : '전용 인프라',
+        capacity: getInfraServiceCapacity(serviceName),
+        deployment: {
+          replicas: getInfraServiceReplicas(serviceName),
+          scaling: tenancyMode === 'small' ? '공용 환경 (관리 대상 아님)' : 'HPA 스케일링',
+          resources: getInfraServiceResources(serviceName),
+          ports: getInfraServicePorts(serviceName),
+          environment: getInfraServiceEnv(serviceName),
+          volumes: getInfraServiceVolumes(serviceName)
+        },
+        tenancyMode: tenancyMode
+      };
+    }
+    
+    setSelectedInstanceInfo(detailInfo);
+    setInstanceDetailOpen(true);
+  };
+
+  // [advice from AI] 서비스 상세 정보 헬퍼 함수들
+  const getMainServiceResources = (serviceName: string, count: number) => {
+    const baseResources = {
+      callbot: { cpu: '100m', memory: '256Mi', gpu: 0 },
+      chatbot: { cpu: '50m', memory: '128Mi', gpu: 0 },
+      advisor: { cpu: '200m', memory: '512Mi', gpu: 0 },
+      stt: { cpu: '154m', memory: '512Mi', gpu: 0 },
+      tts: { cpu: '2000m', memory: '4Gi', gpu: 1 },
+      ta: { cpu: '1000m', memory: '2Gi', gpu: 0 },
+      qa: { cpu: '500m', memory: '1Gi', gpu: 0 }
+    };
+    const base = baseResources[serviceName as keyof typeof baseResources];
+    return {
+      requests: { cpu: base.cpu, memory: base.memory, gpu: base.gpu },
+      limits: { cpu: `${parseInt(base.cpu) * 10}m`, memory: base.memory.replace('Mi', 'Gi').replace('Gi', 'Gi'), gpu: base.gpu }
+    };
+  };
+
+  const getMainServicePorts = (serviceName: string) => {
+    const ports = {
+      callbot: [{ port: 8080, name: 'http' }],
+      chatbot: [{ port: 8081, name: 'http' }],
+      advisor: [{ port: 8082, name: 'http' }],
+      stt: [{ port: 8083, name: 'http' }],
+      tts: [{ port: 8084, name: 'http' }],
+      ta: [{ port: 8087, name: 'http' }],
+      qa: [{ port: 8088, name: 'http' }]
+    };
+    return ports[serviceName as keyof typeof ports] || [];
+  };
+
+  const getMainServiceEnv = (serviceName: string) => {
+    const envs = {
+      callbot: [
+        { name: 'STT_ENDPOINT', value: 'http://stt-service:8080' },
+        { name: 'TTS_ENDPOINT', value: 'http://tts-service:8080' },
+        { name: 'NLP_ENDPOINT', value: 'http://nlp-service:8080' }
+      ],
+      chatbot: [
+        { name: 'NLP_ENDPOINT', value: 'http://nlp-service:8080' },
+        { name: 'AICM_ENDPOINT', value: 'http://aicm-service:8080' }
+      ],
+      advisor: [
+        { name: 'STT_ENDPOINT', value: 'http://stt-service:8080' },
+        { name: 'NLP_ENDPOINT', value: 'http://nlp-service:8080' },
+        { name: 'AICM_ENDPOINT', value: 'http://aicm-service:8080' }
+      ],
+      stt: [],
+      tts: [],
+      ta: [{ name: 'NLP_ENDPOINT', value: 'http://nlp-service:8080' }],
+      qa: []
+    };
+    return envs[serviceName as keyof typeof envs] || [];
+  };
+
+  const getMainServiceVolumes = (serviceName: string) => {
+    return [
+      { name: 'logs', mountPath: '/app/logs' },
+      { name: 'config', mountPath: '/app/config' }
+    ];
+  };
+
+  const getServiceDependencies = (serviceName: string) => {
+    const deps = {
+      callbot: ['STT Service', 'TTS Service', 'NLP Service', 'AICM Service'],
+      chatbot: ['NLP Service', 'AICM Service'],
+      advisor: ['STT Service', 'NLP Service', 'AICM Service'],
+      stt: [],
+      tts: [],
+      ta: ['NLP Service'],
+      qa: []
+    };
+    return deps[serviceName as keyof typeof deps] || [];
+  };
+
+  const getInfraServiceCapacity = (serviceName: string) => {
+    const capacities = {
+      'api-gateway': '8코어 x 2대 (로드밸런싱)',
+      'postgresql': '8코어 x 1대 (메인 DB)',
+      'vectordb': '8코어 x 1대 (벡터 검색)',
+      'auth-service': '8코어 x 1대 (인증 처리)',
+      'nas': '8코어 x 1대 (파일 저장)',
+      'stt-service': '음성인식 처리 엔진',
+      'tts-service': '음성합성 처리 엔진 (GPU)',
+      'nlp-service': '자연어 처리 엔진 (GPU)',
+      'aicm-service': 'AI 지식 검색 엔진 (GPU)'
+    };
+    return capacities[serviceName as keyof typeof capacities] || '서비스';
+  };
+
+  const getInfraServiceReplicas = (serviceName: string) => {
+    return serviceName === 'api-gateway' ? 2 : 1;
+  };
+
+  const getInfraServiceResources = (serviceName: string) => {
+    const resources = {
+      'api-gateway': { cpu: '8000m', memory: '16Gi', gpu: 0 },
+      'postgresql': { cpu: '8000m', memory: '32Gi', gpu: 0 },
+      'vectordb': { cpu: '8000m', memory: '32Gi', gpu: 0 },
+      'auth-service': { cpu: '8000m', memory: '16Gi', gpu: 0 },
+      'nas': { cpu: '8000m', memory: '16Gi', gpu: 0 },
+      'stt-service': { cpu: '4000m', memory: '8Gi', gpu: 0 },
+      'tts-service': { cpu: '2000m', memory: '8Gi', gpu: 1 },
+      'nlp-service': { cpu: '4000m', memory: '16Gi', gpu: 1 },
+      'aicm-service': { cpu: '2000m', memory: '8Gi', gpu: 1 }
+    };
+    const base = resources[serviceName as keyof typeof resources];
+    return {
+      requests: base,
+      limits: { cpu: base.cpu, memory: base.memory, gpu: base.gpu }
+    };
+  };
+
+  const getInfraServicePorts = (serviceName: string) => {
+    const ports = {
+      'api-gateway': [{ port: 80, name: 'http' }, { port: 443, name: 'https' }],
+      'postgresql': [{ port: 5432, name: 'postgres' }],
+      'vectordb': [{ port: 5433, name: 'vectordb' }],
+      'auth-service': [{ port: 8090, name: 'http' }],
+      'nas': [{ port: 2049, name: 'nfs' }],
+      'stt-service': [{ port: 8080, name: 'http' }],
+      'tts-service': [{ port: 8080, name: 'http' }],
+      'nlp-service': [{ port: 8080, name: 'http' }],
+      'aicm-service': [{ port: 8080, name: 'http' }]
+    };
+    return ports[serviceName as keyof typeof ports] || [];
+  };
+
+  const getInfraServiceEnv = (serviceName: string) => {
+    const envs = {
+      'api-gateway': [{ name: 'NGINX_PORT', value: '80' }],
+      'postgresql': [
+        { name: 'POSTGRES_DB', value: 'ecp_ai' },
+        { name: 'POSTGRES_USER', value: 'ecp_user' }
+      ],
+      'vectordb': [
+        { name: 'POSTGRES_DB', value: 'vector_db' },
+        { name: 'POSTGRES_USER', value: 'vector_user' }
+      ],
+      'auth-service': [{ name: 'JWT_SECRET', value: 'configured' }],
+      'nas': [{ name: 'NFS_EXPORTS', value: '/data' }],
+      'stt-service': [{ name: 'MODEL_PATH', value: '/models/stt' }],
+      'tts-service': [{ name: 'MODEL_PATH', value: '/models/tts' }],
+      'nlp-service': [{ name: 'MODEL_PATH', value: '/models/nlp' }],
+      'aicm-service': [{ name: 'VECTOR_DB_URL', value: 'postgresql://vectordb:5433' }]
+    };
+    return envs[serviceName as keyof typeof envs] || [];
+  };
+
+  const getInfraServiceVolumes = (serviceName: string) => {
+    const volumes = {
+      'postgresql': [{ name: 'postgres-data', mountPath: '/var/lib/postgresql/data' }],
+      'vectordb': [{ name: 'vector-data', mountPath: '/var/lib/postgresql/data' }],
+      'nas': [{ name: 'nas-storage', mountPath: '/data' }]
+    };
+    return volumes[serviceName as keyof typeof volumes] || [];
+  };
+
   // [advice from AI] 클라우드 비교 기능 제거 - 매니페스트 생성 후에 선택하도록 변경
 
   // 서비스별 설정 (실제 가중치 반영)
@@ -227,83 +448,134 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
     }
   };
 
-  // 실시간 리소스 계산 (실제 가중치 기반)
+  // [advice from AI] 서비스 선택 여부 확인
+  const hasSelectedServices = useMemo(() => {
+    return Object.values(services).some(value => value > 0);
+  }, [services]);
+
+  // [advice from AI] 외부 API 응답을 테넌시 모드에 따라 필터링하는 로직
+  const filterResourcesByTenancyMode = (apiResponse: any): ResourceEstimation => {
+    if (!apiResponse) {
+      return {
+        gpus: 0,
+        cpus: 0,
+        gpu_type: 'none',
+        preset: 'none',
+        nlp_queries_daily: 0,
+        aicm_queries_daily: 0,
+        total_channels: 0,
+        total_users: 0,
+        tenancy_mode: tenancyMode
+      };
+    }
+
+    if (tenancyMode === 'small') {
+      // 소규모: 공용 인프라 제외, 메인 서비스만 전용
+      return {
+        gpus: apiResponse.gpus || 0,
+        cpus: Math.max(0, (apiResponse.cpus || 0) - 48), // 공용 인프라 48코어 제외
+        gpu_type: apiResponse.gpu_type || 'auto',
+        preset: 'small-tenancy',
+        nlp_queries_daily: apiResponse.nlp_queries_daily || 0,
+        aicm_queries_daily: apiResponse.aicm_queries_daily || 0,
+        total_channels: apiResponse.total_channels || 0,
+        total_users: apiResponse.total_users || 0,
+        tenancy_mode: tenancyMode
+      };
+    } else {
+      // 대규모: 전체 리소스 그대로 사용
+      return {
+        gpus: apiResponse.gpus || 0,
+        cpus: apiResponse.cpus || 0,
+        gpu_type: apiResponse.gpu_type || 'auto',
+        preset: 'large-tenancy',
+        nlp_queries_daily: apiResponse.nlp_queries_daily || 0,
+        aicm_queries_daily: apiResponse.aicm_queries_daily || 0,
+        total_channels: apiResponse.total_channels || 0,
+        total_users: apiResponse.total_users || 0,
+        tenancy_mode: tenancyMode
+      };
+    }
+  };
+
+  // 실시간 리소스 계산 (외부 API 호출 후 테넌시 모드별 필터링)
   const resourceEstimation = useMemo((): ResourceEstimation => {
+    // [advice from AI] 서비스가 선택되지 않았을 때는 모든 값을 0으로 반환
+    if (!hasSelectedServices) {
+      return {
+        gpus: 0,
+        cpus: 0,
+        gpu_type: 'none',
+        preset: 'none',
+        nlp_queries_daily: 0,
+        aicm_queries_daily: 0,
+        total_channels: 0,
+        total_users: 0,
+        tenancy_mode: tenancyMode
+      };
+    }
+
+    // TODO: 외부 API 호출 후 결과를 필터링
+    // 현재는 기본 계산으로 대체 (추후 API 연동 시 수정)
     const totalChannels = services.callbot + services.advisor + services.stt + services.tts;
     const totalUsers = services.chatbot;
 
-    // 프리셋 감지 (실제 기준)
-    let preset = 'micro';
-    if (totalChannels < 10 && totalUsers < 50) {
-      preset = 'micro';
-    } else if (totalChannels < 100 && totalUsers < 500) {
-      preset = 'small';
-    } else if (totalChannels < 500 && totalUsers < 2000) {
-      preset = 'medium';
-    } else {
-      preset = 'large';
-    }
-
-    // NLP 일일 쿼리 계산 (실제 가중치)
-    const nlpQueriesDaily = 
-      services.callbot * 3200 +    // 콜봇: 160콜 × 20쿼리
-      services.chatbot * 288 +     // 챗봇: 2.4세션 × 12쿼리
-      services.advisor * 2400;     // 어드바이저: 160상담 × 15쿼리
-
-    // AICM 일일 쿼리 계산 (실제 가중치)
-    const aicmQueriesDaily =
-      services.callbot * 480 +     // 콜봇: 160콜 × 3쿼리
-      services.chatbot * 24 +      // 챗봇: 2.4세션 × 1쿼리
-      services.advisor * 1360;     // 어드바이저: 160상담 × 8.5쿼리
-
-    // GPU 배수 계산
-    let gpuMultiplier = 1.0;
-    if (totalChannels > 100 && totalChannels <= 500) {
-      gpuMultiplier = 1.5;
-    } else if (totalChannels > 500) {
-      gpuMultiplier = 2.5;
-    }
-
-    // 9시간 근무 기준 초당 쿼리
-    const nlpQps = (nlpQueriesDaily / (9 * 3600)) * gpuMultiplier;
-    const aicmQps = (aicmQueriesDaily / (9 * 3600)) * gpuMultiplier;
-
-    // GPU 계산 (T4 기준)
-    const ttsChannels = services.callbot + services.tts;
-    let estimatedGpus = 0;
-    estimatedGpus += Math.ceil(ttsChannels / 50);  // TTS (캐시 최적화)
-    estimatedGpus += Math.ceil(nlpQps / 150);      // NLP
-    estimatedGpus += Math.ceil(aicmQps / 100);     // AICM
-
-    // GPU 타입 자동 선택
-    let recommendedGpuType = 't4';
-    if (totalChannels <= 100) {
-      recommendedGpuType = 't4';  // 소규모 강제
-    } else if (estimatedGpus <= 2) {
-      recommendedGpuType = 't4';
-    } else if (estimatedGpus <= 8) {
-      recommendedGpuType = 'v100';
-    } else {
-      recommendedGpuType = 'l40s';
-    }
-
-    // CPU 계산 (실제 가중치)
-    const sttChannels = services.callbot + services.advisor * 2 + services.stt;
-    let estimatedCpus = Math.ceil(sttChannels / 6.5);  // STT: 6.5채널/코어
-    estimatedCpus += Math.ceil(totalChannels * 0.05);  // TA + QA
-    estimatedCpus += 20;  // 기본 인프라
-
-    return {
-      gpus: Math.max(1, estimatedGpus),
-      cpus: Math.max(4, estimatedCpus),
-      gpu_type: recommendedGpuType,
-      preset,
-      nlp_queries_daily: nlpQueriesDaily,
-      aicm_queries_daily: aicmQueriesDaily,
+    // 기본 계산 (외부 API 응답 대신 임시)
+    const mockApiResponse = {
+      gpus: Math.max(1, Math.ceil((totalChannels + totalUsers) / 50)),
+      cpus: Math.max(4, Math.ceil((totalChannels * 2) + (totalUsers * 0.5)) + 48), // 인프라 포함
+      gpu_type: 'auto',
+      nlp_queries_daily: services.callbot * 3200 + services.chatbot * 288 + services.advisor * 2400,
+      aicm_queries_daily: services.callbot * 480 + services.chatbot * 24 + services.advisor * 1360,
       total_channels: totalChannels,
       total_users: totalUsers
     };
-  }, [services]);
+
+    return filterResourcesByTenancyMode(mockApiResponse);
+  }, [services, hasSelectedServices, tenancyMode]);
+
+  // [advice from AI] 테넌트 ID 중복 체크 함수
+  const checkTenantIdDuplicate = async (id: string) => {
+    if (!id.trim()) {
+      setTenantIdStatus({
+        checking: false,
+        available: null,
+        message: ''
+      });
+      return;
+    }
+
+    setTenantIdStatus(prev => ({ ...prev, checking: true }));
+
+    try {
+      const response = await fetch(`/api/v1/tenants/check-duplicate/${id}`);
+      const result = await response.json();
+
+      setTenantIdStatus({
+        checking: false,
+        available: result.available,
+        message: result.message,
+        suggestions: result.suggestions
+      });
+    } catch (error) {
+      setTenantIdStatus({
+        checking: false,
+        available: null,
+        message: '중복 확인 중 오류가 발생했습니다'
+      });
+    }
+  };
+
+  // [advice from AI] 테넌트 ID 변경 시 중복 체크 (디바운스 적용)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (tenantId.trim()) {
+        checkTenantIdDuplicate(tenantId);
+      }
+    }, 500); // 500ms 디바운스
+
+    return () => clearTimeout(timer);
+  }, [tenantId]);
 
   // 서비스 값 변경 핸들러
   const handleServiceChange = (service: keyof ServiceRequirements, value: number) => {
@@ -328,6 +600,12 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
     const tenantIdRegex = /^[a-z0-9-]+$/;
     if (!tenantIdRegex.test(tenantId)) {
       setError('테넌시 ID는 소문자, 숫자, 하이픈만 사용 가능합니다.');
+      return;
+    }
+
+    // [advice from AI] 중복 체크 결과 확인
+    if (tenantIdStatus.available === false) {
+      setError('이미 사용 중인 테넌시 ID입니다. 다른 이름을 선택해주세요.');
       return;
     }
 
@@ -360,7 +638,7 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
       ta: 0,
       qa: 0
     });
-    setGpuType('auto');
+    setTenancyMode('small');
   };
 
   // [advice from AI] 통합 데이터 서비스를 사용한 테넌시 생성 핸들러
@@ -391,7 +669,7 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
         body: JSON.stringify({
           tenant_id: tenantId.toLowerCase(),
           service_requirements: services,
-          gpu_type: gpuType,
+          tenancy_mode: tenancyMode,
           auto_deploy: true
         }),
       });
@@ -415,7 +693,7 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
         ta: 0,
         qa: 0
       });
-      setGpuType('auto');
+      setTenancyMode('small');
 
     } catch (err) {
       setError(err instanceof Error ? err.message : '테넌시 생성 실패');
@@ -462,31 +740,88 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
                 value={tenantId}
                 onChange={(e) => setTenantId(e.target.value)}
                 placeholder="예: customer-abc"
-                helperText="소문자, 숫자, 하이픈만 사용 가능"
+                helperText={
+                  tenantIdStatus.checking ? "중복 확인 중..." :
+                  tenantIdStatus.available === true ? "✅ 사용 가능한 ID입니다" :
+                  tenantIdStatus.available === false ? `❌ ${tenantIdStatus.message}` :
+                  "소문자, 숫자, 하이픈만 사용 가능"
+                }
                 required
                 disabled={loading}
+                error={tenantIdStatus.available === false}
+                InputProps={{
+                  endAdornment: tenantIdStatus.checking ? (
+                    <CircularProgress size={20} />
+                  ) : tenantIdStatus.available === true ? (
+                    <CheckCircleIcon color="success" />
+                  ) : tenantIdStatus.available === false ? (
+                    <ErrorIcon color="error" />
+                  ) : null
+                }}
               />
+              
+              {/* 중복 시 대안 제안 */}
+              {tenantIdStatus.available === false && tenantIdStatus.suggestions && (
+                <Alert severity="warning" sx={{ mt: 1 }}>
+                  <AlertTitle>💡 대안 제안</AlertTitle>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    다음 이름들을 사용해보세요:
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {tenantIdStatus.suggestions.map((suggestion) => (
+                      <Chip
+                        key={suggestion}
+                        label={suggestion}
+                        size="small"
+                        onClick={() => setTenantId(suggestion)}
+                        sx={{ cursor: 'pointer' }}
+                        variant="outlined"
+                        color="primary"
+                      />
+                    ))}
+                  </Box>
+                </Alert>
+              )}
             </Grid>
             
             <Grid item xs={12} md={4}>
               <FormControl fullWidth>
-                <InputLabel>GPU 타입</InputLabel>
+                <InputLabel>테넌시 모드</InputLabel>
                 <Select
-                  value={gpuType}
-                  label="GPU 타입"
-                  onChange={(e) => setGpuType(e.target.value as any)}
+                  value={tenancyMode}
+                  label="테넌시 모드"
+                  onChange={(e) => setTenancyMode(e.target.value as any)}
                   disabled={loading}
                 >
-                  <MenuItem value="auto">자동 선택 (권장)</MenuItem>
-                  <MenuItem value="t4">T4 (가성비)</MenuItem>
-                  <MenuItem value="v100">V100 (균형)</MenuItem>
-                  <MenuItem value="l40s">L40S (고성능)</MenuItem>
+                  <MenuItem value="small">🏢 소규모 테넌시 (공용 인프라 활용)</MenuItem>
+                  <MenuItem value="large">🏭 대규모 테넌시 (완전 독립 배포)</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
             
             {/* [advice from AI] 클라우드 제공업체 선택 제거 - 매니페스트 생성 후에 선택하도록 변경 */}
           </Grid>
+
+          {/* 테넌시 모드 설명 */}
+          {tenancyMode === 'small' ? (
+            <Alert severity="info" sx={{ mb: 3 }}>
+              <AlertTitle>🏢 소규모 테넌시 모드</AlertTitle>
+              <Typography variant="body2">
+                공용 인프라(API Gateway, PostgreSQL, VectorDB, Auth Service, NAS)를 활용하여 비용 효율적인 배포를 제공합니다.
+                <br />
+                선택한 메인 서비스와 필요한 처리 엔진(STT, TTS, NLP, AICM)만 전용 리소스로 배포됩니다.
+              </Typography>
+            </Alert>
+          ) : (
+            <Alert severity="warning" sx={{ mb: 3 }}>
+              <AlertTitle>🏭 대규모 테넌시 모드</AlertTitle>
+              <Typography variant="body2">
+                완전 독립적인 테넌시 환경을 구성합니다. 모든 서비스와 인프라가 전용 리소스로 배포되어 최대 성능과 보안을 제공합니다.
+                <br />
+                높은 리소스 요구사항과 비용이 발생할 수 있습니다.
+              </Typography>
+            </Alert>
+          )}
 
           {/* [advice from AI] 서비스 설정 - 개선된 레이아웃으로 박스 정렬 */}
           <Grid container spacing={3} sx={{ mb: 3 }}>
@@ -626,83 +961,137 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
 
           {/* 실시간 예상 계산 결과 */}
           <Alert 
-            severity="info" 
+            severity={hasSelectedServices ? "info" : "warning"} 
             sx={{ mb: 3 }}
             action={
-              <IconButton
-                size="small"
-                onClick={() => setShowCalculation(!showCalculation)}
-              >
-                {showCalculation ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-              </IconButton>
+              hasSelectedServices && (
+                <IconButton
+                  size="small"
+                  onClick={() => setShowCalculation(!showCalculation)}
+                >
+                  {showCalculation ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                </IconButton>
+              )
             }
           >
             <AlertTitle sx={{ display: 'flex', alignItems: 'center' }}>
               📊 실시간 예상 계산 (실제 가중치 기반)
-              <Chip 
-                label={resourceEstimation.preset.toUpperCase()} 
-                color={getPresetColor(resourceEstimation.preset) as any}
-                size="small" 
-                sx={{ ml: 2 }} 
-              />
+              {hasSelectedServices ? (
+                <Chip 
+                  label={resourceEstimation.preset.toUpperCase()} 
+                  color={getPresetColor(resourceEstimation.preset) as any}
+                  size="small" 
+                  sx={{ ml: 2 }} 
+                />
+              ) : (
+                <Chip 
+                  label="대기 중" 
+                  color="default"
+                  size="small" 
+                  sx={{ ml: 2 }} 
+                />
+              )}
             </AlertTitle>
             
-            <Box display="flex" flexWrap="wrap" gap={1} mt={1}>
-              <MetricChip 
-                icon={<SpeedIcon />}
-                label={`채널: ${resourceEstimation.total_channels}`}
-                variant="outlined"
-                size="small"
-              />
-              <MetricChip 
-                icon={<MemoryIcon />}
-                label={`사용자: ${resourceEstimation.total_users}`}
-                variant="outlined"
-                size="small"
-              />
-              <MetricChip 
-                label={`GPU ${resourceEstimation.gpus}개 (${resourceEstimation.gpu_type.toUpperCase()})`}
-                color="primary"
-                size="small"
-              />
-              <MetricChip 
-                label={`CPU ${resourceEstimation.cpus}코어`}
-                color="secondary"
-                size="small"
-              />
-            </Box>
+            {hasSelectedServices ? (
+              <Box display="flex" flexWrap="wrap" gap={1} mt={1}>
+                <MetricChip 
+                  icon={<SpeedIcon />}
+                  label={`채널: ${resourceEstimation.total_channels}`}
+                  variant="outlined"
+                  size="small"
+                />
+                <MetricChip 
+                  icon={<MemoryIcon />}
+                  label={`사용자: ${resourceEstimation.total_users}`}
+                  variant="outlined"
+                  size="small"
+                />
+                <MetricChip 
+                  label={`GPU ${resourceEstimation.gpus}개 (${resourceEstimation.gpu_type.toUpperCase()})`}
+                  color="primary"
+                  size="small"
+                />
+                <MetricChip 
+                  label={`CPU ${resourceEstimation.cpus}코어 (${tenancyMode === 'small' ? '전용' : '전용+인프라'})`}
+                  color="secondary"
+                  size="small"
+                />
+                {tenancyMode === 'small' && (
+                  <MetricChip 
+                    label="공용 인프라: 48코어 (기존 환경)"
+                    color="info"
+                    variant="outlined"
+                    size="small"
+                  />
+                )}
+              </Box>
+            ) : (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                메인서비스 또는 지원서비스를 선택하시면 실시간으로 필요한 리소스가 계산됩니다.
+                <br />
+                📊 채널: 0 | 👥 사용자: 0 | 💾 GPU: 0개 | 🖥️ CPU: 0코어
+              </Typography>
+            )}
 
-            <Collapse in={showCalculation}>
-              <Divider sx={{ my: 2 }} />
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" gutterBottom fontWeight="medium">
-                    📈 일일 쿼리 처리량
-                  </Typography>
-                  <Typography variant="caption" display="block">
-                    • NLP 쿼리: {resourceEstimation.nlp_queries_daily.toLocaleString()}개/일
-                  </Typography>
-                  <Typography variant="caption" display="block">
-                    • AICM 검색: {resourceEstimation.aicm_queries_daily.toLocaleString()}개/일
-                  </Typography>
+            {hasSelectedServices && (
+              <Collapse in={showCalculation}>
+                <Divider sx={{ my: 2 }} />
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="body2" gutterBottom fontWeight="medium">
+                      📈 일일 쿼리 처리량
+                    </Typography>
+                    <Typography variant="caption" display="block">
+                      • NLP 쿼리: {resourceEstimation.nlp_queries_daily.toLocaleString()}개/일
+                    </Typography>
+                    <Typography variant="caption" display="block">
+                      • AICM 검색: {resourceEstimation.aicm_queries_daily.toLocaleString()}개/일
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="body2" gutterBottom fontWeight="medium">
+                      🏗️ {tenancyMode === 'small' ? '소규모 테넌시' : '대규모 테넌시'} 구성
+                    </Typography>
+                    {tenancyMode === 'small' ? (
+                      <Typography variant="caption" display="block">
+                        • 메인 서비스: 전용 리소스 배포
+                        <br />
+                        • 인프라: 공용 환경 활용 (48코어)
+                        <br />
+                        • 비용 효율적 구성
+                      </Typography>
+                    ) : (
+                      <Typography variant="caption" display="block">
+                        • 모든 서비스: 완전 독립 배포
+                        <br />
+                        • 인프라: 전용 리소스 (48코어)
+                        <br />
+                        • 최대 성능 및 보안 구성
+                      </Typography>
+                    )}
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="body2" gutterBottom fontWeight="medium">
+                      🐳 필요한 컨테이너 이미지
+                    </Typography>
+                    {Object.entries(services).map(([serviceName, count]) => {
+                      if (count === 0) return null;
+                      return (
+                        <Typography key={serviceName} variant="caption" display="block">
+                          • {serviceName.toUpperCase()}: ecp-ai/{serviceName}:latest
+                        </Typography>
+                      );
+                    })}
+                    {Object.values(services).every(v => v === 0) && (
+                      <Typography variant="caption" color="text.secondary">
+                        서비스를 선택하면 필요한 이미지가 표시됩니다
+                      </Typography>
+                    )}
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" gutterBottom fontWeight="medium">
-                    🎯 GPU 타입 선택 이유
-                  </Typography>
-                  <Typography variant="caption" display="block">
-                    {resourceEstimation.total_channels <= 100 
-                      ? "소규모 환경 - T4 강제 (비용 효율)"
-                      : resourceEstimation.gpus <= 2
-                      ? "GPU 2개 이하 - T4 선택"
-                      : resourceEstimation.gpus <= 8
-                      ? "GPU 3-8개 - V100 선택"
-                      : "GPU 9개 이상 - L40S 선택"
-                    }
-                  </Typography>
-                </Grid>
-              </Grid>
-            </Collapse>
+              </Collapse>
+            )}
           </Alert>
 
 
@@ -714,7 +1103,12 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
                 variant="contained"
                 size="large"
                 onClick={() => setShowWizard(true)}
-                disabled={!tenantId.trim() || Object.values(services).every(v => v === 0)}
+                disabled={
+                  !tenantId.trim() || 
+                  Object.values(services).every(v => v === 0) ||
+                  tenantIdStatus.available === false ||
+                  tenantIdStatus.checking
+                }
                 startIcon={<RocketIcon />}
                 sx={{ 
                   px: 6, 
@@ -739,23 +1133,437 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
 
           {/* 권장 하드웨어 구성 (테넌시 생성 버튼 아래로 이동) */}
           <ServiceSection sx={{ mt: 3 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center" onClick={() => setShowHardwareSpec(!showHardwareSpec)} sx={{ cursor: 'pointer' }}>
-              <Typography variant="h6">
+            <Box display="flex" justifyContent="space-between" alignItems="center" onClick={() => hasSelectedServices && setShowHardwareSpec(!showHardwareSpec)} sx={{ cursor: hasSelectedServices ? 'pointer' : 'default' }}>
+              <Typography variant="h6" color={hasSelectedServices ? 'text.primary' : 'text.secondary'}>
                 💻 권장 하드웨어 구성 (가중치 데이터 기반)
+                {!hasSelectedServices && (
+                  <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                    - 서비스 선택 후 확인 가능
+                  </Typography>
+                )}
               </Typography>
-              <IconButton size="small">
-                {showHardwareSpec ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-              </IconButton>
+              {hasSelectedServices && (
+                <IconButton size="small">
+                  {showHardwareSpec ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                </IconButton>
+              )}
             </Box>
             
-            <Collapse in={showHardwareSpec}>
-              <Box sx={{ mt: 2 }}>
-                <HardwareSpecCalculator 
-                  serviceRequirements={services}
-                  gpuType={gpuType}
-                />
-              </Box>
-            </Collapse>
+            {hasSelectedServices ? (
+              <Collapse in={showHardwareSpec}>
+                <Box sx={{ mt: 2 }}>
+                  <HardwareSpecCalculator 
+                    serviceRequirements={services}
+                    gpuType="auto"
+                    tenancyMode={tenancyMode}
+                  />
+                </Box>
+              </Collapse>
+            ) : (
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="body2">
+                  메인서비스 또는 지원서비스를 선택하시면 권장 하드웨어 구성을 확인할 수 있습니다.
+                </Typography>
+              </Alert>
+            )}
+          </ServiceSection>
+
+          {/* [advice from AI] 필요한 컨테이너 이미지 정보 섹션 추가 */}
+          <ServiceSection sx={{ mt: 3 }}>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+              🐳 필요한 컨테이너 이미지 정보
+              <Tooltip title="선택한 서비스에 따라 필요한 Docker 이미지들을 확인할 수 있습니다">
+                <InfoIcon sx={{ ml: 1, fontSize: 20, color: 'text.secondary' }} />
+              </Tooltip>
+            </Typography>
+            
+            {Object.values(services).every(v => v === 0) ? (
+              <Alert severity="info">
+                <Typography variant="body2">
+                  서비스를 선택하면 필요한 컨테이너 이미지 정보가 여기에 표시됩니다.
+                </Typography>
+              </Alert>
+            ) : (
+              <Grid container spacing={2}>
+                {Object.entries(services).map(([serviceName, count]) => {
+                  if (count === 0) return null;
+
+                  const getImageInfo = (service: string) => {
+                    switch (service) {
+                      case 'callbot':
+                        return {
+                          image: 'ecp-ai/callbot:latest',
+                          size: '~1.2GB',
+                          description: '음성 통화 AI 상담 서비스',
+                          registry: 'Docker Hub / ECR'
+                        };
+                      case 'chatbot':
+                        return {
+                          image: 'ecp-ai/chatbot:latest',
+                          size: '~980MB',
+                          description: '텍스트 기반 AI 채팅 서비스',
+                          registry: 'Docker Hub / ECR'
+                        };
+                      case 'advisor':
+                        return {
+                          image: 'ecp-ai/advisor:latest',
+                          size: '~1.1GB',
+                          description: 'AI 보조 상담사 서비스',
+                          registry: 'Docker Hub / ECR'
+                        };
+                      case 'stt':
+                        return {
+                          image: 'ecp-ai/stt-service:latest',
+                          size: '~2.1GB',
+                          description: '음성인식 (STT) 독립 서비스',
+                          registry: 'Docker Hub / ECR'
+                        };
+                      case 'tts':
+                        return {
+                          image: 'ecp-ai/tts-service:latest',
+                          size: '~1.8GB',
+                          description: '음성합성 (TTS) 독립 서비스',
+                          registry: 'Docker Hub / ECR'
+                        };
+                      case 'ta':
+                        return {
+                          image: 'ecp-ai/text-analyzer:latest',
+                          size: '~850MB',
+                          description: '텍스트 분석 서비스',
+                          registry: 'Docker Hub / ECR'
+                        };
+                      case 'qa':
+                        return {
+                          image: 'ecp-ai/quality-assurance:latest',
+                          size: '~750MB',
+                          description: '품질 관리 서비스',
+                          registry: 'Docker Hub / ECR'
+                        };
+                      default:
+                        return null;
+                    }
+                  };
+                  
+                  const imageInfo = getImageInfo(serviceName);
+                  if (!imageInfo) return null;
+                  
+                  // [advice from AI] 실제 배포 인스턴스는 모든 서비스 1개로 시작 (HPA 스케일링)
+                  const deploymentInfo = { replicas: 1 };
+                  
+                  return (
+                    <Grid item xs={12} sm={6} md={4} key={serviceName}>
+                      <Paper sx={{ 
+                        p: 2, 
+                        backgroundColor: 'primary.50', 
+                        border: '1px solid', 
+                        borderColor: 'primary.200',
+                        borderRadius: 2
+                      }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                          <Chip 
+                            label={serviceName.toUpperCase()} 
+                            color="primary" 
+                            size="small" 
+                            sx={{ mr: 1 }}
+                          />
+                          <Chip 
+                            label={
+                              serviceName === 'callbot' ? `${count}채널 처리능력` :
+                              serviceName === 'chatbot' ? `${count}명 동시사용자` :
+                              serviceName === 'advisor' ? `${count}채널 처리능력` :
+                              serviceName === 'stt' ? `${count}채널 처리능력` :
+                              serviceName === 'tts' ? `${count}채널 처리능력` :
+                              serviceName === 'ta' ? `일일 ${count}건 분석` :
+                              serviceName === 'qa' ? `일일 ${count}건 평가` :
+                              `${count}개 단위`
+                            } 
+                            variant="outlined" 
+                            size="small"
+                          />
+                        </Box>
+                        <Typography variant="body2" fontWeight="bold" gutterBottom>
+                          {imageInfo.image}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          {imageInfo.description}
+                        </Typography>
+                        <Typography variant="caption" color="primary.main" display="block" sx={{ mt: 0.5, fontWeight: 'medium' }}>
+                          🚀 배포 인스턴스: {deploymentInfo.replicas}개 (HPA 스케일링)
+                        </Typography>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                          <Box>
+                            <Typography variant="caption" color="primary.main" display="block">
+                              크기: {imageInfo.size}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {imageInfo.registry}
+                            </Typography>
+                          </Box>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => showInstanceDetail(serviceName, 'main')}
+                            sx={{ ml: 1 }}
+                          >
+                            상세정보
+                          </Button>
+                        </Box>
+                      </Paper>
+                    </Grid>
+                  );
+                })}
+                
+                {(() => {
+                  // [advice from AI] 테넌시 모드에 따른 필요 서비스 계산
+                  const getRequiredServices = () => {
+                    if (tenancyMode === 'small') {
+                      // 소규모: 공용 인프라만 표시 (STT/TTS/NLP/AICM는 메인 서비스에 포함)
+                      return ['api-gateway', 'postgresql', 'vectordb', 'auth-service', 'nas'];
+                    } else {
+                      // 대규모: 모든 의존 서비스 포함 (기존 로직)
+                      const requiredServices = new Set(['api-gateway', 'postgresql', 'vectordb', 'auth-service', 'nas']);
+                      
+                      // 각 메인 서비스별 의존성 확인
+                      if (services.callbot > 0) {
+                        requiredServices.add('stt-service');
+                        requiredServices.add('tts-service');
+                        requiredServices.add('nlp-service');
+                        requiredServices.add('aicm-service');
+                      }
+                      if (services.chatbot > 0) {
+                        requiredServices.add('nlp-service');
+                        requiredServices.add('aicm-service');
+                      }
+                      if (services.advisor > 0) {
+                        requiredServices.add('stt-service');
+                        requiredServices.add('nlp-service');
+                        requiredServices.add('aicm-service');
+                      }
+                      if (services.ta > 0) {
+                        requiredServices.add('nlp-service');
+                      }
+                      
+                      return Array.from(requiredServices);
+                    }
+                  };
+
+                  const requiredServices = getRequiredServices();
+                  
+                  if (requiredServices.length === 0) return null;
+
+                  return (
+                    <>
+                      {/* [advice from AI] 테넌시 모드별 서비스 표시 */}
+                      <Grid item xs={12}>
+                        <Divider sx={{ my: 2 }}>
+                          <Chip 
+                            label={tenancyMode === 'small' ? "🏢 공용 인프라 (기존 환경 활용)" : "🏭 전용 인프라 (완전 독립 배포)"} 
+                            size="small" 
+                            color="secondary" 
+                          />
+                        </Divider>
+                      </Grid>
+                      
+                      {/* 동적 서비스 렌더링 */}
+                      {requiredServices.map((serviceName) => {
+                        const getServiceInfo = (service: string) => {
+                          switch (service) {
+                            case 'api-gateway':
+                              return {
+                                name: 'API-GATEWAY',
+                                image: 'nginx:alpine',
+                                size: '~23MB',
+                                description: 'API 게이트웨이 (8코어 x 2대)',
+                                replicas: 2,
+                                type: tenancyMode === 'small' ? '공용' : '전용'
+                              };
+                            case 'postgresql':
+                              return {
+                                name: 'POSTGRESQL',
+                                image: 'postgres:13',
+                                size: '~117MB',
+                                description: 'PostgreSQL 데이터베이스 (8코어)',
+                                replicas: 1,
+                                type: tenancyMode === 'small' ? '공용' : '전용'
+                              };
+                            case 'vectordb':
+                              return {
+                                name: 'VECTORDB',
+                                image: 'pgvector/pgvector:pg16',
+                                size: '~150MB',
+                                description: 'Vector 데이터베이스 (8코어)',
+                                replicas: 1,
+                                type: tenancyMode === 'small' ? '공용' : '전용'
+                              };
+                            case 'auth-service':
+                              return {
+                                name: 'AUTH-SERVICE',
+                                image: 'ecp-ai/auth-server:latest',
+                                size: '~200MB',
+                                description: '인증 서비스 (8코어)',
+                                replicas: 1,
+                                type: tenancyMode === 'small' ? '공용' : '전용'
+                              };
+                            case 'nas':
+                              return {
+                                name: 'NAS',
+                                image: 'ecp-ai/nas-server:latest',
+                                size: '~180MB',
+                                description: 'NAS 스토리지 서비스 (8코어)',
+                                replicas: 1,
+                                type: tenancyMode === 'small' ? '공용' : '전용'
+                              };
+                            case 'stt-service':
+                              return {
+                                name: 'STT-SERVICE',
+                                image: 'ecp-ai/stt-server:latest',
+                                size: '~2.1GB',
+                                description: '음성인식 처리 엔진',
+                                replicas: 1,
+                                type: '전용'
+                              };
+                            case 'tts-service':
+                              return {
+                                name: 'TTS-SERVICE',
+                                image: 'ecp-ai/tts-server:latest',
+                                size: '~1.8GB',
+                                description: '음성합성 처리 엔진 (GPU)',
+                                replicas: 1,
+                                type: '전용'
+                              };
+                            case 'nlp-service':
+                              return {
+                                name: 'NLP-SERVICE',
+                                image: 'ecp-ai/nlp-server:latest',
+                                size: '~1.5GB',
+                                description: '자연어 처리 엔진 (GPU)',
+                                replicas: 1,
+                                type: '전용'
+                              };
+                            case 'aicm-service':
+                              return {
+                                name: 'AICM-SERVICE',
+                                image: 'ecp-ai/aicm-server:latest',
+                                size: '~1.3GB',
+                                description: 'AI 지식 검색 엔진 (GPU)',
+                                replicas: 1,
+                                type: '전용'
+                              };
+                            default:
+                              return null;
+                          }
+                        };
+
+                        const serviceInfo = getServiceInfo(serviceName);
+                        if (!serviceInfo) return null;
+
+                        return (
+                          <Grid item xs={12} sm={6} md={4} key={serviceName}>
+                            <Paper sx={{ 
+                              p: 2, 
+                              backgroundColor: serviceInfo.type === '공용' ? 'info.50' : 'grey.50', 
+                              border: '1px solid', 
+                              borderColor: serviceInfo.type === '공용' ? 'info.200' : 'grey.300',
+                              borderRadius: 2
+                            }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                <Chip 
+                                  label={serviceInfo.name} 
+                                  color={serviceInfo.type === '공용' ? 'info' : 'secondary'} 
+                                  size="small" 
+                                  sx={{ mr: 1 }}
+                                />
+                                <Chip 
+                                  label={serviceInfo.type} 
+                                  variant="outlined" 
+                                  size="small"
+                                  color={serviceInfo.type === '공용' ? 'info' : 'default'}
+                                />
+                              </Box>
+                              <Typography variant="body2" fontWeight="bold" gutterBottom>
+                                {serviceInfo.image}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                {serviceInfo.description}
+                              </Typography>
+                              <Typography variant="caption" color={serviceInfo.type === '공용' ? 'info.main' : 'secondary.main'} display="block" sx={{ mt: 0.5, fontWeight: 'medium' }}>
+                                🚀 배포 인스턴스: {serviceInfo.replicas}개 ({serviceInfo.type === '공용' ? '기존 환경' : 'HPA 스케일링'})
+                              </Typography>
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                                <Box>
+                                  <Typography variant="caption" color={serviceInfo.type === '공용' ? 'info.main' : 'secondary.main'} display="block">
+                                    크기: {serviceInfo.size}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Docker Hub
+                                  </Typography>
+                                </Box>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color={serviceInfo.type === '공용' ? 'info' : 'secondary'}
+                                  onClick={() => showInstanceDetail(serviceName, 'infra')}
+                                  sx={{ ml: 1 }}
+                                >
+                                  상세정보
+                                </Button>
+                              </Box>
+                            </Paper>
+                          </Grid>
+                        );
+                      })}
+                    </>
+                  );
+                })()}
+              </Grid>
+            )}
+            
+            {/* 총 이미지 크기 계산 */}
+            {Object.values(services).some(v => v > 0) && (
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                <Typography variant="body2">
+                  💾 <strong>예상 총 다운로드 크기</strong>: 
+                  {(() => {
+                    // 메인 서비스 이미지 크기
+                    const imageSizes = {
+                      callbot: 1.2, chatbot: 0.98, advisor: 1.1, 
+                      stt: 2.1, tts: 1.8, ta: 0.85, qa: 0.75
+                    };
+                    const mainServicesSize = Object.entries(services)
+                      .filter(([_, count]) => count > 0)
+                      .reduce((sum, [serviceName, _]) => sum + (imageSizes[serviceName as keyof typeof imageSizes] || 0), 0);
+                    
+                    // 테넌시 모드별 인프라 크기 계산
+                    let infraSize = 0;
+                    
+                    if (tenancyMode === 'small') {
+                      // 소규모: 공용 인프라는 다운로드 불필요 (0GB)
+                      infraSize = 0;
+                    } else {
+                      // 대규모: 모든 인프라 + 의존 서비스
+                      infraSize += 0.023 + 0.117 + 0.15 + 0.2 + 0.18; // API Gateway + PostgreSQL + VectorDB + Auth + NAS
+                      
+                      const selectedServices = Object.entries(services).filter(([_, count]) => count > 0);
+                      const needsSTT = selectedServices.some(([name]) => ['callbot', 'advisor'].includes(name));
+                      const needsTTS = selectedServices.some(([name]) => ['callbot'].includes(name));
+                      const needsNLP = selectedServices.some(([name]) => ['callbot', 'chatbot', 'advisor', 'ta'].includes(name));
+                      const needsAICM = selectedServices.some(([name]) => ['callbot', 'chatbot', 'advisor'].includes(name));
+                      
+                      if (needsSTT) infraSize += 2.1;
+                      if (needsTTS) infraSize += 1.8;
+                      if (needsNLP) infraSize += 1.5;
+                      if (needsAICM) infraSize += 1.3;
+                    }
+                    
+                    const totalSize = mainServicesSize + infraSize;
+                    return ` 약 ${totalSize.toFixed(1)}GB (메인: ${mainServicesSize.toFixed(1)}GB + ${tenancyMode === 'small' ? '공용 인프라: 0GB' : `전용 인프라: ${infraSize.toFixed(1)}GB`})`;
+                  })()}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {tenancyMode === 'small' ? '공용 인프라는 기존 환경을 활용하므로 추가 다운로드가 불필요합니다.' : '첫 배포 시에만 이미지 다운로드가 필요하며, 이후에는 캐시된 이미지를 사용합니다.'}
+                </Typography>
+              </Alert>
+            )}
           </ServiceSection>
 
           {/* 생성 중 추가 정보 */}
@@ -780,13 +1588,13 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
         <DeploymentWizard
           tenantId={tenantId}
           serviceRequirements={services}
-          gpuType={gpuType}
-          onDeploymentComplete={(result) => {
+          gpuType="auto"
+          onDeploymentComplete={(result: any) => {
             setShowWizard(false);
             onTenantCreated(result);
           }}
           onCancel={() => setShowWizard(false)}
-          onTenantSaved={(tenant) => {
+          onTenantSaved={(tenant: any) => {
             setShowWizard(false);
             if (onTenantSaved) {
               onTenantSaved(tenant);
@@ -795,6 +1603,127 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
         />
       </Dialog>
       
+      {/* 인스턴스 상세 정보 다이얼로그 */}
+      <Dialog 
+        open={instanceDetailOpen} 
+        onClose={() => setInstanceDetailOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <Box sx={{ p: 3 }}>
+          {selectedInstanceInfo && (
+            <>
+              <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                🔍 {selectedInstanceInfo.name} 상세 정보
+                <Chip 
+                  label={selectedInstanceInfo.type} 
+                  color={selectedInstanceInfo.type === '공용 인프라' ? 'info' : 'primary'} 
+                  size="small" 
+                  sx={{ ml: 2 }} 
+                />
+              </Typography>
+
+              {/* 기본 정보 */}
+              <Paper sx={{ p: 2, mb: 2, backgroundColor: 'grey.50' }}>
+                <Typography variant="h6" gutterBottom>📋 기본 정보</Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={6}>
+                    <Typography variant="body2"><strong>서비스명:</strong> {selectedInstanceInfo.name}</Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2"><strong>타입:</strong> {selectedInstanceInfo.type}</Typography>
+                  </Grid>
+                  {selectedInstanceInfo.capacity && (
+                    <Grid item xs={12}>
+                      <Typography variant="body2"><strong>처리 능력:</strong> {selectedInstanceInfo.capacity}</Typography>
+                    </Grid>
+                  )}
+                  {selectedInstanceInfo.dependencies && selectedInstanceInfo.dependencies.length > 0 && (
+                    <Grid item xs={12}>
+                      <Typography variant="body2"><strong>의존성:</strong> {selectedInstanceInfo.dependencies.join(', ')}</Typography>
+                    </Grid>
+                  )}
+                </Grid>
+              </Paper>
+
+              {/* 배포 정보 */}
+              <Paper sx={{ p: 2, mb: 2, backgroundColor: 'primary.50' }}>
+                <Typography variant="h6" gutterBottom>🚀 배포 구성</Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={6}>
+                    <Typography variant="body2"><strong>Replicas:</strong> {selectedInstanceInfo.deployment.replicas}개</Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2"><strong>스케일링:</strong> {selectedInstanceInfo.deployment.scaling}</Typography>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* 리소스 정보 */}
+              <Paper sx={{ p: 2, mb: 2, backgroundColor: 'success.50' }}>
+                <Typography variant="h6" gutterBottom>💻 리소스 할당</Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={4}>
+                    <Typography variant="body2"><strong>CPU:</strong> {selectedInstanceInfo.deployment.resources.requests.cpu}</Typography>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <Typography variant="body2"><strong>Memory:</strong> {selectedInstanceInfo.deployment.resources.requests.memory}</Typography>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <Typography variant="body2"><strong>GPU:</strong> {selectedInstanceInfo.deployment.resources.requests.gpu}개</Typography>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* 네트워크 정보 */}
+              {selectedInstanceInfo.deployment.ports.length > 0 && (
+                <Paper sx={{ p: 2, mb: 2, backgroundColor: 'warning.50' }}>
+                  <Typography variant="h6" gutterBottom>🌐 네트워크 설정</Typography>
+                  {selectedInstanceInfo.deployment.ports.map((port: any, index: number) => (
+                    <Typography key={index} variant="body2">
+                      • 포트 {port.port} ({port.name})
+                    </Typography>
+                  ))}
+                </Paper>
+              )}
+
+              {/* 환경변수 */}
+              {selectedInstanceInfo.deployment.environment.length > 0 && (
+                <Paper sx={{ p: 2, mb: 2, backgroundColor: 'info.50' }}>
+                  <Typography variant="h6" gutterBottom>🔧 환경변수</Typography>
+                  {selectedInstanceInfo.deployment.environment.map((env: any, index: number) => (
+                    <Typography key={index} variant="body2" sx={{ fontFamily: 'monospace' }}>
+                      {env.name}={env.value}
+                    </Typography>
+                  ))}
+                </Paper>
+              )}
+
+              {/* 볼륨 마운트 */}
+              {selectedInstanceInfo.deployment.volumes.length > 0 && (
+                <Paper sx={{ p: 2, mb: 2, backgroundColor: 'secondary.50' }}>
+                  <Typography variant="h6" gutterBottom>💾 볼륨 마운트</Typography>
+                  {selectedInstanceInfo.deployment.volumes.map((volume: any, index: number) => (
+                    <Typography key={index} variant="body2">
+                      • {volume.name} → {volume.mountPath}
+                    </Typography>
+                  ))}
+                </Paper>
+              )}
+
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
+                <Button 
+                  variant="contained" 
+                  onClick={() => setInstanceDetailOpen(false)}
+                >
+                  닫기
+                </Button>
+              </Box>
+            </>
+          )}
+        </Box>
+      </Dialog>
+
       {/* 스낵바 알림 */}
       <Snackbar
         open={snackbarOpen}

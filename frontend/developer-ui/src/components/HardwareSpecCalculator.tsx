@@ -66,6 +66,7 @@ interface CloudInstance {
 interface HardwareSpecCalculatorProps {
   serviceRequirements: ServiceRequirements;
   gpuType: string;
+  tenancyMode?: 'small' | 'large';
 }
 
 interface ServerSpec {
@@ -110,7 +111,8 @@ const SpecChip = styled(Chip)(({ theme }) => ({
 const HardwareRecommendationDisplay: React.FC<{
   serviceRequirements: ServiceRequirements & { gpu_type?: string };
   gpuType: string;
-}> = ({ serviceRequirements, gpuType }) => {
+  tenancyMode?: 'small' | 'large';
+}> = ({ serviceRequirements, gpuType, tenancyMode = 'large' }) => {
   const [hardwareData, setHardwareData] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -128,6 +130,7 @@ const HardwareRecommendationDisplay: React.FC<{
           body: JSON.stringify({
             ...serviceRequirements,
             gpu_type: gpuType,
+            tenancy_mode: tenancyMode,
             include_cloud_mapping: true
           }),
         });
@@ -147,7 +150,7 @@ const HardwareRecommendationDisplay: React.FC<{
     };
 
     fetchHardwareData();
-  }, [serviceRequirements, gpuType]);
+  }, [serviceRequirements, gpuType, tenancyMode]);
 
   // 로딩 상태
   if (loading) {
@@ -386,7 +389,8 @@ const HardwareRecommendationDisplay: React.FC<{
 
 export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
   serviceRequirements,
-  gpuType
+  gpuType,
+  tenancyMode = 'large'
 }) => {
   
   const [detailedSpec, setDetailedSpec] = React.useState<any>(null);
@@ -410,6 +414,7 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
           body: JSON.stringify({
             ...serviceRequirements,
             gpu_type: gpuType,
+            tenancy_mode: tenancyMode,
             include_cloud_mapping: true
           }),
           signal: controller.signal
@@ -419,8 +424,9 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
 
         if (response.ok) {
           const data = await response.json();
+          // [advice from AI] 백엔드에서 이미 테넌시 모드별 필터링 완료
           setDetailedSpec(data);
-          console.log("✅ 하드웨어 계산 API 성공:", data);
+          console.log("✅ 하드웨어 계산 API 성공 (백엔드 필터링 적용):", data);
         } else {
           console.warn("⚠️ API 응답 실패, 클라이언트 계산 사용:", response.status);
           setDetailedSpec(null);
@@ -440,7 +446,7 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
     } else {
       setLoading(false);
     }
-  }, [serviceRequirements, gpuType]);
+  }, [serviceRequirements, gpuType, tenancyMode]);
   
   // 하드웨어 스펙 계산 (폴백용 - 기존 로직 유지)
   const hardwareSpecs = useMemo(() => {
@@ -858,13 +864,14 @@ export const HardwareSpecCalculator: React.FC<HardwareSpecCalculatorProps> = ({
           callbot: serviceRequirements.callbot,
           chatbot: serviceRequirements.chatbot,
           advisor: serviceRequirements.advisor,
-          standalone_stt: serviceRequirements.stt,
-          standalone_tts: serviceRequirements.tts,
+          stt: serviceRequirements.stt,
+          tts: serviceRequirements.tts,
           ta: serviceRequirements.ta,
           qa: serviceRequirements.qa,
           gpu_type: gpuType
         }}
         gpuType={gpuType}
+        tenancyMode={tenancyMode}
       />
 
       {/* 기존 계산 엔진 상태 표시 (참고용) */}
