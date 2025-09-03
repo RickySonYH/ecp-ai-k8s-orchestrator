@@ -30,7 +30,11 @@ import {
   CircularProgress,
   Avatar,
   LinearProgress,
-  Divider
+  Divider,
+  Menu,
+  MenuItem,
+  Snackbar,
+  Switch
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -52,16 +56,20 @@ import {
   MoreVert as MoreIcon,
   Business as TenantIcon,
   Computer as ServerIcon,
-  DeveloperBoard as GpuIcon
+  DeveloperBoard as GpuIcon,
+  PlayArrow as StartIcon,
+  Stop as StopIcon,
+  RestartAlt as RestartIcon,
+  CheckCircleOutline as ForceCompleteIcon  // [advice from AI] 강제 완료 아이콘 추가
 } from '@mui/icons-material';
 
 // 컴포넌트 임포트
-import { TenantDashboard } from './TenantDashboard.tsx';
-import DashboardCharts from './DashboardCharts.tsx';
+import { TenantDashboard } from './TenantDashboard';
+import DashboardCharts from './DashboardCharts';
 
 // 서비스 임포트
-import StatisticsService from '../services/StatisticsService.ts';
-import TenantDataServiceFactory, { TenantDataServiceInterface } from '../services/TenantDataService.ts';
+import { StatisticsService } from '../services/StatisticsService';
+import TenantDataServiceFactory, { TenantDataServiceInterface } from '../services/TenantDataService';
 
 // 타입 정의
 interface TenantSummary {
@@ -75,6 +83,23 @@ interface TenantSummary {
   cpu_usage?: number;
   memory_usage?: number;
   storage_usage?: number;
+  gpu_usage?: number; // [advice from AI] GPU 사용률 추가
+  // [advice from AI] 서비스 구성 정보 추가
+  service_config?: {
+    callbot: number;
+    chatbot: number;
+    advisor: number;
+    stt: number;
+    tts: number;
+    ta: number;
+    qa: number;
+  };
+  // [advice from AI] GPU 정보 추가
+  gpu_info?: {
+    type: string;
+    allocated: number;
+    utilization: number;
+  };
 }
 
 interface SystemMetrics {
@@ -108,6 +133,19 @@ const IntegratedDashboard: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = 
   
   // 차트 데이터 상태
   const [chartData, setChartData] = useState<any>(null);
+  
+  // [advice from AI] 테넌트 관리 메뉴 상태 추가
+  const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [menuTenantId, setMenuTenantId] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{action: string, tenant: TenantSummary} | null>(null);
+
+  // [advice from AI] 실시간 업데이트 상태 추가
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // 데이터 서비스 초기화
   const tenantDataService: TenantDataServiceInterface = TenantDataServiceFactory.create(isDemoMode);
@@ -127,7 +165,8 @@ const IntegratedDashboard: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = 
       // 통계 데이터 로딩
       try {
         console.log('통계 데이터 로딩 중...');
-        statsResponse = await StatisticsService.getOverview();
+        const statisticsService = new StatisticsService();
+        statsResponse = await statisticsService.getOverview();
         console.log('통계 데이터 로딩 성공:', statsResponse);
       } catch (statsError) {
         console.error('통계 데이터 로딩 실패:', statsError);
@@ -186,23 +225,31 @@ const IntegratedDashboard: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = 
         setChartData(overview);
       }
 
-      // 테넌트 목록 설정
-      if (Array.isArray(tenantsResponse)) {
-        const processedTenants = tenantsResponse.map(tenant => ({
-          ...tenant,
-          cpu_usage: Math.floor(Math.random() * 80) + 20, // 임시 데이터
-          memory_usage: Math.floor(Math.random() * 70) + 30, // 임시 데이터
-          storage_usage: Math.floor(Math.random() * 60) + 20 // 임시 데이터
-        }));
-        setTenants(processedTenants);
+      // 테넌트 목록 설정 - [advice from AI] 백엔드 응답 구조 맞춤
+      if (tenantsResponse) {
+        let tenantList = [];
+        
+        // 백엔드 응답이 {tenants: [...]} 구조인 경우
+        if (tenantsResponse.tenants && Array.isArray(tenantsResponse.tenants)) {
+          tenantList = tenantsResponse.tenants;
+        } 
+        // 직접 배열인 경우
+        else if (Array.isArray(tenantsResponse)) {
+          tenantList = tenantsResponse;
+        }
+        
+        console.log('처리된 테넌트 목록:', tenantList);
+        setTenants(tenantList);
       }
 
       console.log('데이터 로딩 완료');
+      setLastUpdated(new Date()); // [advice from AI] 마지막 업데이트 시간 기록
 
     } catch (error) {
       console.error('전체 데이터 로딩 오류:', error);
       setError(`데이터를 불러오는 중 오류가 발생했습니다. 백엔드 서버가 실행 중인지 확인해주세요.`);
     } finally {
+      console.log('데이터 로딩 완료 - 로딩 상태 해제');
       setLoading(false);
     }
   };
@@ -212,6 +259,18 @@ const IntegratedDashboard: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = 
     loadData();
   }, [isDemoMode]);
 
+  // [advice from AI] 실시간 자동 새로고침 (15초마다 - deploying 상태 빠른 감지)
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(() => {
+      console.log('자동 새로고침 실행...');
+      loadData();
+    }, 15000); // 15초마다 새로고침 (deploying 상태 빠른 반영)
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, isDemoMode]);
+
   // 유틸리티 함수
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -220,6 +279,8 @@ const IntegratedDashboard: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = 
       case 'inactive':
       case 'stopped': return 'error';
       case 'pending': return 'warning';
+      case 'deploying': return 'info';  // [advice from AI] deploying 상태 추가
+      case 'failed':
       case 'error': return 'error';
       default: return 'default';
     }
@@ -233,6 +294,84 @@ const IntegratedDashboard: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = 
       case 'large': return 'error';
       default: return 'default';
     }
+  };
+
+  // [advice from AI] 테넌트 관리 함수들 추가
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, tenantId: string) => {
+    event.stopPropagation();
+    setMenuAnchorEl(event.currentTarget);
+    setMenuTenantId(tenantId);
+  };
+
+  const handleMenuClose = () => {
+    setMenuAnchorEl(null);
+    setMenuTenantId(null);
+  };
+
+  const handleTenantAction = async (action: string, tenant: TenantSummary) => {
+    setActionLoading(`${action}-${tenant.tenant_id}`);
+    
+    try {
+      let response;
+      let message = '';
+      
+      switch (action) {
+        case 'start':
+          response = await fetch(`/api/v1/tenants/${tenant.tenant_id}/start`, { method: 'POST' });
+          message = `테넌트 '${tenant.tenant_id}' 시작됨`;
+          break;
+        case 'stop':
+          response = await fetch(`/api/v1/tenants/${tenant.tenant_id}/stop`, { method: 'POST' });
+          message = `테넌트 '${tenant.tenant_id}' 중지됨`;
+          break;
+        case 'restart':
+          response = await fetch(`/api/v1/tenants/${tenant.tenant_id}/restart`, { method: 'POST' });
+          message = `테넌트 '${tenant.tenant_id}' 재시작됨`;
+          break;
+        case 'force-complete':  // [advice from AI] 강제 완료 액션 추가
+          response = await fetch(`/api/v1/tenants/${encodeURIComponent(tenant.tenant_id)}/complete-deployment`, { method: 'POST' });
+          message = `테넌트 '${tenant.tenant_id}' 배포 강제 완료됨`;
+          break;
+        case 'delete':
+          response = await fetch(`/api/v1/tenants/${tenant.tenant_id}`, { method: 'DELETE' });
+          message = `테넌트 '${tenant.tenant_id}' 삭제됨`;
+          break;
+        default:
+          throw new Error('알 수 없는 액션');
+      }
+
+      if (response && response.ok) {
+        setSnackbarMessage(message);
+        setSnackbarOpen(true);
+        
+        // 삭제인 경우 목록에서 제거
+        if (action === 'delete') {
+          setTenants(prev => prev.filter(t => t.tenant_id !== tenant.tenant_id));
+        } else {
+          // [advice from AI] 다른 액션의 경우 즉시 + 3초 후 데이터 새로고침 (상태 변경 반영)
+          loadData();
+          setTimeout(() => {
+            console.log('액션 후 추가 새로고침 실행...');
+            loadData();
+          }, 3000);
+        }
+      } else {
+        throw new Error('액션 실행 실패');
+      }
+    } catch (error) {
+      setSnackbarMessage(`오류: ${action} 실행 실패`);
+      setSnackbarOpen(true);
+    } finally {
+      setActionLoading(null);
+      handleMenuClose();
+      setConfirmDialogOpen(false);
+    }
+  };
+
+  const handleConfirmAction = (action: string, tenant: TenantSummary) => {
+    setConfirmAction({ action, tenant });
+    setConfirmDialogOpen(true);
+    handleMenuClose();
   };
 
   // 이벤트 핸들러
@@ -251,14 +390,24 @@ const IntegratedDashboard: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = 
     );
   }
 
-  // 에러 상태
-  if (error) {
+  // 에러 상태 - 로딩 중이 아닐 때만 표시
+  if (error && !loading) {
     return (
-      <Alert severity="error" sx={{ m: 3 }}>
-        <Typography variant="h6">오류 발생</Typography>
-        <Typography>{error}</Typography>
-        <Button onClick={loadData} sx={{ mt: 1 }}>다시 시도</Button>
-      </Alert>
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error" sx={{ mb: 2 }}>
+          <Typography variant="h6">오류 발생</Typography>
+          <Typography>{error}</Typography>
+        </Alert>
+        <Button 
+          variant="outlined" 
+          onClick={loadData}
+          startIcon={<RefreshIcon />}
+          disabled={loading}
+          sx={{ mt: 1 }}
+        >
+          다시 시도
+        </Button>
+      </Box>
     );
   }
 
@@ -273,16 +422,36 @@ const IntegratedDashboard: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = 
           <Typography variant="body1" color="text.secondary">
             전체 시스템 현황과 테넌트 관리를 한눈에 확인하세요
           </Typography>
+          {/* [advice from AI] 마지막 업데이트 시간 표시 */}
+          {lastUpdated && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              마지막 업데이트: {lastUpdated.toLocaleTimeString('ko-KR')}
+            </Typography>
+          )}
         </Box>
-        <Button
-          variant="outlined"
-          startIcon={<RefreshIcon />}
-          onClick={loadData}
-          disabled={loading}
-          sx={{ px: 3, py: 1 }}
-        >
-          새로고침
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          {/* [advice from AI] 자동 새로고침 토글 */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              자동 새로고침
+            </Typography>
+            <Switch
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+              size="small"
+              color="primary"
+            />
+          </Box>
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={loadData}
+            disabled={loading}
+            sx={{ px: 3, py: 1 }}
+          >
+            새로고침
+          </Button>
+        </Box>
       </Box>
 
       {/* 시스템 통계 카드 - 2-3 레이아웃 */}
@@ -518,12 +687,14 @@ const IntegratedDashboard: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = 
                       </Box>
                       <IconButton 
                         size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          // 메뉴 핸들러 추가 가능
-                        }}
+                        onClick={(e) => handleMenuOpen(e, tenant.tenant_id)}
+                        disabled={actionLoading === `delete-${tenant.tenant_id}` || actionLoading === `start-${tenant.tenant_id}` || actionLoading === `stop-${tenant.tenant_id}`}
                       >
-                        <MoreIcon />
+                        {actionLoading && actionLoading.includes(tenant.tenant_id) ? (
+                          <CircularProgress size={16} />
+                        ) : (
+                          <MoreIcon />
+                        )}
                       </IconButton>
                     </Box>
 
@@ -541,13 +712,109 @@ const IntegratedDashboard: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = 
                         variant="outlined" 
                         color={getPresetColor(tenant.preset) as any}
                       />
-                      <Chip 
-                        label={`${tenant.services_count}개 서비스`} 
-                        size="small" 
-                        variant="outlined" 
-                        color="info"
-                      />
+                      <Tooltip 
+                        title={
+                          <Box>
+                            <Typography variant="body2">서비스 구성 상세:</Typography>
+                            {tenant.service_config ? (
+                              <>
+                                <Typography variant="caption">• 콜봇: {tenant.service_config.callbot}개</Typography><br/>
+                                <Typography variant="caption">• 챗봇: {tenant.service_config.chatbot}개</Typography><br/>
+                                <Typography variant="caption">• 어드바이저: {tenant.service_config.advisor}개</Typography><br/>
+                                <Typography variant="caption">• STT: {tenant.service_config.stt}개</Typography><br/>
+                                <Typography variant="caption">• TTS: {tenant.service_config.tts}개</Typography><br/>
+                                <Typography variant="caption">• 텍스트 분석: {tenant.service_config.ta}개</Typography><br/>
+                                <Typography variant="caption">• QA: {tenant.service_config.qa}개</Typography><br/>
+                              </>
+                            ) : (
+                              <Typography variant="caption">서비스 구성 정보 없음</Typography>
+                            )}
+                            {tenant.gpu_info && (
+                              <>
+                                <Divider sx={{ my: 1 }} />
+                                <Typography variant="body2">GPU 정보:</Typography>
+                                <Typography variant="caption">• 타입: {tenant.gpu_info.type.toUpperCase()}</Typography><br/>
+                                <Typography variant="caption">• 할당: {tenant.gpu_info.allocated}개</Typography><br/>
+                                <Typography variant="caption">• 사용률: {tenant.gpu_usage || 0}%</Typography>
+                              </>
+                            )}
+                          </Box>
+                        }
+                      >
+                        <Chip 
+                          label={`${tenant.services_count}개 서비스`} 
+                          size="small" 
+                          variant="outlined" 
+                          color="info"
+                          sx={{ cursor: 'help' }}
+                        />
+                      </Tooltip>
                     </Box>
+
+                    {/* [advice from AI] 서비스 구성 정보 표시 */}
+                    {tenant.service_config && (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                          서비스 구성:
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                          {tenant.service_config.callbot > 0 && (
+                            <Chip 
+                              label={`콜봇 ${tenant.service_config.callbot}`} 
+                              size="small" 
+                              color="primary" 
+                              variant="outlined"
+                              sx={{ fontSize: '0.7rem', height: 20 }}
+                            />
+                          )}
+                          {tenant.service_config.chatbot > 0 && (
+                            <Chip 
+                              label={`챗봇 ${tenant.service_config.chatbot}`} 
+                              size="small" 
+                              color="secondary" 
+                              variant="outlined"
+                              sx={{ fontSize: '0.7rem', height: 20 }}
+                            />
+                          )}
+                          {tenant.service_config.advisor > 0 && (
+                            <Chip 
+                              label={`어드바이저 ${tenant.service_config.advisor}`} 
+                              size="small" 
+                              color="info" 
+                              variant="outlined"
+                              sx={{ fontSize: '0.7rem', height: 20 }}
+                            />
+                          )}
+                          {tenant.service_config.stt > 0 && (
+                            <Chip 
+                              label={`STT ${tenant.service_config.stt}`} 
+                              size="small" 
+                              color="warning" 
+                              variant="outlined"
+                              sx={{ fontSize: '0.7rem', height: 20 }}
+                            />
+                          )}
+                          {tenant.service_config.tts > 0 && (
+                            <Chip 
+                              label={`TTS ${tenant.service_config.tts}`} 
+                              size="small" 
+                              color="success" 
+                              variant="outlined"
+                              sx={{ fontSize: '0.7rem', height: 20 }}
+                            />
+                          )}
+                          {(tenant.service_config.ta > 0 || tenant.service_config.qa > 0) && (
+                            <Chip 
+                              label={`분석 ${tenant.service_config.ta + tenant.service_config.qa}`} 
+                              size="small" 
+                              color="default" 
+                              variant="outlined"
+                              sx={{ fontSize: '0.7rem', height: 20 }}
+                            />
+                          )}
+                        </Box>
+                      </Box>
+                    )}
 
                     {/* 리소스 사용률 */}
                     {tenant.cpu_usage && (
@@ -580,7 +847,44 @@ const IntegratedDashboard: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = 
                       </Box>
                     )}
 
+                    {/* [advice from AI] GPU 사용률 추가 */}
+                    {tenant.gpu_usage !== undefined && tenant.gpu_info?.allocated > 0 && (
+                      <Box sx={{ mb: 2 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                          <Typography variant="body2" color="text.secondary">
+                            GPU 사용률 ({tenant.gpu_info.type.toUpperCase()})
+                          </Typography>
+                          <Typography variant="body2" fontWeight="bold">{tenant.gpu_usage}%</Typography>
+                        </Box>
+                        <LinearProgress
+                          variant="determinate"
+                          value={tenant.gpu_usage}
+                          sx={{ height: 6, borderRadius: 3 }}
+                          color={tenant.gpu_usage > 90 ? 'error' : tenant.gpu_usage > 70 ? 'warning' : 'success'}
+                        />
+                        <Typography variant="caption" color="text.secondary">
+                          {tenant.gpu_info.allocated}개 할당됨
+                        </Typography>
+                      </Box>
+                    )}
+
                     <Divider sx={{ my: 1 }} />
+
+                    {/* [advice from AI] GPU 정보 표시 */}
+                    {tenant.gpu_info?.allocated > 0 && (
+                      <Box sx={{ mb: 1 }}>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          GPU 할당:
+                        </Typography>
+                        <Chip 
+                          label={`${tenant.gpu_info.type.toUpperCase()} ${tenant.gpu_info.allocated}개`} 
+                          size="small" 
+                          color="error" 
+                          variant="outlined"
+                          sx={{ fontSize: '0.7rem', height: 20, mt: 0.5 }}
+                        />
+                      </Box>
+                    )}
 
                     {/* 생성일 */}
                     <Typography variant="caption" color="text.secondary">
@@ -624,6 +928,164 @@ const IntegratedDashboard: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = 
           <Button onClick={() => setTenantDetailOpen(false)}>닫기</Button>
         </DialogActions>
       </Dialog>
+
+      {/* [advice from AI] 테넌트 관리 메뉴 */}
+      <Menu
+        anchorEl={menuAnchorEl}
+        open={Boolean(menuAnchorEl)}
+        onClose={handleMenuClose}
+        PaperProps={{
+          elevation: 8,
+          sx: {
+            overflow: 'visible',
+            filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.32))',
+            mt: 1.5,
+            minWidth: 200
+          }
+        }}
+      >
+        <MenuItem onClick={() => {
+          const tenant = tenants.find(t => t.tenant_id === menuTenantId);
+          if (tenant) handleTenantSelect(tenant.tenant_id);
+          handleMenuClose();
+        }}>
+          <ViewIcon sx={{ mr: 2, color: 'primary.main' }} />
+          상세 보기
+        </MenuItem>
+        
+        <Divider />
+        
+        <MenuItem 
+          onClick={() => {
+            const tenant = tenants.find(t => t.tenant_id === menuTenantId);
+            if (tenant && tenant.status !== 'running') {
+              handleTenantAction('start', tenant);
+            }
+          }}
+          disabled={
+            tenants.find(t => t.tenant_id === menuTenantId)?.status === 'running' ||
+            tenants.find(t => t.tenant_id === menuTenantId)?.status === 'deploying'
+          }
+        >
+          <StartIcon sx={{ mr: 2, color: 'success.main' }} />
+          시작
+        </MenuItem>
+        
+        <MenuItem 
+          onClick={() => {
+            const tenant = tenants.find(t => t.tenant_id === menuTenantId);
+            if (tenant && tenant.status === 'running') {
+              handleTenantAction('stop', tenant);
+            }
+          }}
+          disabled={tenants.find(t => t.tenant_id === menuTenantId)?.status !== 'running'}
+        >
+          <StopIcon sx={{ mr: 2, color: 'warning.main' }} />
+          중지
+        </MenuItem>
+        
+        <MenuItem 
+          onClick={() => {
+            const tenant = tenants.find(t => t.tenant_id === menuTenantId);
+            if (tenant) {
+              handleTenantAction('restart', tenant);
+            }
+          }}
+          disabled={tenants.find(t => t.tenant_id === menuTenantId)?.status === 'deploying'}
+        >
+          <RestartIcon sx={{ mr: 2, color: 'info.main' }} />
+          재시작
+        </MenuItem>
+
+        {/* [advice from AI] 강제 완료 메뉴 - deploying 상태일 때만 표시 */}
+        {tenants.find(t => t.tenant_id === menuTenantId)?.status === 'deploying' && (
+          <MenuItem 
+            onClick={() => {
+              const tenant = tenants.find(t => t.tenant_id === menuTenantId);
+              if (tenant) {
+                handleTenantAction('force-complete', tenant);
+              }
+            }}
+          >
+            <ForceCompleteIcon sx={{ mr: 2, color: 'success.main' }} />
+            강제 완료
+          </MenuItem>
+        )}
+        
+        <Divider />
+        
+        <MenuItem 
+          onClick={() => {
+            const tenant = tenants.find(t => t.tenant_id === menuTenantId);
+            if (tenant) {
+              handleConfirmAction('delete', tenant);
+            }
+          }}
+          sx={{ color: 'error.main' }}
+        >
+          <DeleteIcon sx={{ mr: 2 }} />
+          삭제
+        </MenuItem>
+      </Menu>
+
+      {/* [advice from AI] 액션 확인 다이얼로그 */}
+      <Dialog open={confirmDialogOpen} onClose={() => setConfirmDialogOpen(false)}>
+        <DialogTitle>
+          {confirmAction?.action === 'delete' ? '🗑️ 테넌트 삭제 확인' : 
+           confirmAction?.action === 'stop' ? '⏹️ 테넌트 중지 확인' :
+           confirmAction?.action === 'restart' ? '🔄 테넌트 재시작 확인' : '확인'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            {confirmAction?.action === 'delete' && 
+              `테넌트 '${confirmAction.tenant.tenant_id}'를 완전히 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`
+            }
+            {confirmAction?.action === 'stop' && 
+              `테넌트 '${confirmAction.tenant.tenant_id}'를 중지하시겠습니까? 모든 서비스가 정지됩니다.`
+            }
+            {confirmAction?.action === 'restart' && 
+              `테넌트 '${confirmAction.tenant.tenant_id}'를 재시작하시겠습니까? 잠시 서비스가 중단될 수 있습니다.`
+            }
+          </Typography>
+          
+          {confirmAction?.tenant && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              <Typography variant="body2">
+                • 프리셋: {confirmAction.tenant.preset.toUpperCase()}<br/>
+                • 상태: {confirmAction.tenant.status}<br/>
+                • 서비스 수: {confirmAction.tenant.services_count}개<br/>
+                • 생성일: {new Date(confirmAction.tenant.created_at).toLocaleDateString()}
+              </Typography>
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDialogOpen(false)}>
+            취소
+          </Button>
+          <Button 
+            onClick={() => {
+              if (confirmAction) {
+                handleTenantAction(confirmAction.action, confirmAction.tenant);
+              }
+            }}
+            color={confirmAction?.action === 'delete' ? 'error' : 'primary'}
+            variant="contained"
+          >
+            {confirmAction?.action === 'delete' ? '삭제' : 
+             confirmAction?.action === 'stop' ? '중지' :
+             confirmAction?.action === 'restart' ? '재시작' : '확인'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 스낵바 알림 */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={() => setSnackbarOpen(false)}
+        message={snackbarMessage}
+      />
     </Box>
   );
 };

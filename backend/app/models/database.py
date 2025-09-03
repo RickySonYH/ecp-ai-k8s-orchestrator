@@ -174,6 +174,93 @@ class MonitoringData(Base):
     )
 
 
+class Alert(Base):
+    """알림/알람 데이터 테이블"""
+    __tablename__ = "alerts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    alert_id = Column(String(100), unique=True, index=True, nullable=False)  # 고유 알림 ID
+    
+    # 알림 기본 정보
+    title = Column(String(500), nullable=False)  # 알림 제목
+    message = Column(Text, nullable=False)  # 알림 메시지
+    severity = Column(String(20), nullable=False)  # critical, warning, info
+    category = Column(String(50), nullable=False)  # system, tenant, resource, sla
+    
+    # 관련 정보
+    tenant_id = Column(String(100), ForeignKey("tenants.tenant_id"), nullable=True)  # 관련 테넌트
+    service_name = Column(String(100), nullable=True)  # 관련 서비스
+    resource_type = Column(String(50), nullable=True)  # cpu, memory, gpu, network
+    metric_value = Column(Float, nullable=True)  # 관련 메트릭 값
+    threshold_value = Column(Float, nullable=True)  # 임계값
+    
+    # 상태 정보
+    status = Column(String(20), default="active", nullable=False)  # active, resolved, acknowledged
+    resolved = Column(Boolean, default=False, nullable=False)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_by = Column(String(100), nullable=True)
+    
+    # 메타데이터
+    source = Column(String(100), nullable=True)  # k8s-simulator, prometheus, manual
+    tags = Column(JSON, nullable=True)  # 추가 태그 정보
+    alert_metadata = Column(JSON, nullable=True)  # 추가 메타데이터 (metadata는 SQLAlchemy 예약어)
+    
+    # 시간 정보
+    timestamp = Column(DateTime(timezone=True), nullable=False)  # 알림 발생 시간
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+        # 관계
+    tenant = relationship("Tenant", backref="alerts")
+
+    __table_args__ = (
+        Index('idx_alert_timestamp', 'timestamp'),
+        Index('idx_alert_severity_status', 'severity', 'status'),
+        Index('idx_alert_tenant', 'tenant_id'),
+        Index('idx_alert_category', 'category'),
+    )
+
+
+class ThresholdSettings(Base):
+    """임계값 설정 테이블"""
+    __tablename__ = "threshold_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    setting_id = Column(String(100), unique=True, index=True, nullable=False)  # 설정 고유 ID
+    
+    # 설정 기본 정보
+    name = Column(String(200), nullable=False)  # 설정 이름
+    description = Column(Text, nullable=True)  # 설정 설명
+    category = Column(String(50), nullable=False, default="monitoring")  # monitoring, alerting, system
+    
+    # 임계값 데이터 (JSON으로 저장)
+    thresholds = Column(JSON, nullable=False)  # CPU, Memory, GPU, Response Time 등의 임계값
+    
+    # 알림 설정
+    notifications_enabled = Column(Boolean, default=True, nullable=False)  # 실시간 알림 활성화
+    email_enabled = Column(Boolean, default=False, nullable=False)  # 이메일 알림
+    sms_enabled = Column(Boolean, default=False, nullable=False)  # SMS 알림
+    slack_enabled = Column(Boolean, default=False, nullable=False)  # Slack 알림
+    
+    # 사용자 정보
+    created_by = Column(String(100), nullable=True)  # 설정 생성자
+    updated_by = Column(String(100), nullable=True)  # 설정 수정자
+    
+    # 상태 정보
+    is_active = Column(Boolean, default=True, nullable=False)  # 설정 활성화 상태
+    is_default = Column(Boolean, default=False, nullable=False)  # 기본 설정 여부
+    
+    # 시간 정보
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    __table_args__ = (
+        Index('idx_threshold_category', 'category'),
+        Index('idx_threshold_active', 'is_active'),
+        Index('idx_threshold_default', 'is_default'),
+    )
+
+
 class DashboardConfig(Base):
     """대시보드 설정 테이블 (테넌시별 자동 생성)"""
     __tablename__ = "dashboard_configs"
@@ -473,6 +560,96 @@ def seed_initial_data():
         db.rollback()
     finally:
         db.close()
+
+
+# [advice from AI] CICD 설정 관리를 위한 테이블들
+class CICDGlobalSettings(Base):
+    """CICD 글로벌 설정 테이블"""
+    __tablename__ = "cicd_global_settings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    setting_key = Column(String(100), unique=True, nullable=False)
+    setting_category = Column(String(50), nullable=False)  # registry, security, monitoring, devtools
+    setting_value = Column(JSON, nullable=False)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    
+    # 시간 정보
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    
+    # 인덱스
+    __table_args__ = (
+        Index('idx_cicd_global_category', 'setting_category'),
+        Index('idx_cicd_global_active', 'is_active'),
+    )
+
+
+class CICDTenantSettings(Base):
+    """CICD 테넌트별 설정 테이블"""
+    __tablename__ = "cicd_tenant_settings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String(100), ForeignKey("tenants.tenant_id"), nullable=False)
+    setting_key = Column(String(100), nullable=False)
+    setting_category = Column(String(50), nullable=False)  # build_deploy, permissions
+    setting_value = Column(JSON, nullable=False)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    
+    # 시간 정보
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    
+    # 관계 설정
+    tenant = relationship("Tenant")
+    
+    # 인덱스
+    __table_args__ = (
+        Index('idx_cicd_tenant_tenant_id', 'tenant_id'),
+        Index('idx_cicd_tenant_category', 'setting_category'),
+        UniqueConstraint('tenant_id', 'setting_key', name='uq_tenant_setting_key'),
+    )
+
+
+class CICDDeploymentHistory(Base):
+    """CICD 배포 히스토리 테이블"""
+    __tablename__ = "cicd_deployment_history"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String(100), ForeignKey("tenants.tenant_id"), nullable=False)
+    service_name = Column(String(100), nullable=False)  # callbot, chatbot, advisor
+    deployment_type = Column(String(50), nullable=False)  # blue_green, rolling, canary
+    
+    # 배포 정보
+    image_tag = Column(String(200), nullable=False)
+    registry_url = Column(String(500), nullable=False)
+    deployment_status = Column(String(50), nullable=False)  # pending, running, success, failed
+    
+    # 배포 세부 정보
+    deployment_config = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    
+    # 승인 정보
+    requested_by = Column(String(100), nullable=True)
+    approved_by = Column(String(100), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    
+    # 시간 정보
+    started_at = Column(DateTime, default=func.now())
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    
+    # 관계 설정
+    tenant = relationship("Tenant")
+    
+    # 인덱스
+    __table_args__ = (
+        Index('idx_cicd_deploy_tenant_id', 'tenant_id'),
+        Index('idx_cicd_deploy_status', 'deployment_status'),
+        Index('idx_cicd_deploy_service', 'service_name'),
+        Index('idx_cicd_deploy_created_at', 'created_at'),
+    )
 
 
 if __name__ == "__main__":

@@ -232,8 +232,6 @@ const HardwarePlacementAdvisor: React.FC<HardwarePlacementAdvisorProps> = ({
       };
       
       setHardwareSpecs(mockData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '알 수 없는 오류');
     } finally {
       setIsLoading(false);
     }

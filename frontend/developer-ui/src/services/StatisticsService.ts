@@ -16,6 +16,7 @@ export interface StatisticsOverview {
     memory_total: number;
     gpu_total: number;
   };
+  tenants_by_preset: Array<{preset: string; count: number}>;
   recent_activity: Array<{
     tenant_name: string;
     action: string;
@@ -76,7 +77,7 @@ export interface ResourceStatistics {
   };
 }
 
-class StatisticsService {
+export class StatisticsService {
   private baseUrl: string;
 
   constructor() {
@@ -94,7 +95,7 @@ class StatisticsService {
 
   // 이미지 통계
   async getImageStatistics(): Promise<ImageStatistics> {
-    const response = await fetch(`${this.baseUrl}/api/v1/images`);
+    const response = await fetch(`${this.baseUrl}/api/v1/images-statistics`);
     if (!response.ok) {
       throw new Error('이미지 통계를 가져오는데 실패했습니다');
     }
@@ -103,7 +104,7 @@ class StatisticsService {
 
   // 서비스 통계
   async getServiceStatistics(): Promise<ServiceStatistics> {
-    const response = await fetch(`${this.baseUrl}/api/v1/services`);
+    const response = await fetch(`${this.baseUrl}/api/v1/services-statistics`);
     if (!response.ok) {
       throw new Error('서비스 통계를 가져오는데 실패했습니다');
     }
@@ -112,7 +113,7 @@ class StatisticsService {
 
   // 테넌트 통계
   async getTenantStatistics(): Promise<TenantStatistics> {
-    const response = await fetch(`${this.baseUrl}/api/v1/tenants`);
+    const response = await fetch(`${this.baseUrl}/api/v1/tenants-statistics`);
     if (!response.ok) {
       throw new Error('테넌트 통계를 가져오는데 실패했습니다');
     }
@@ -121,7 +122,7 @@ class StatisticsService {
 
   // 리소스 통계
   async getResourceStatistics(): Promise<ResourceStatistics> {
-    const response = await fetch(`${this.baseUrl}/api/v1/resources`);
+    const response = await fetch(`${this.baseUrl}/api/v1/resources-statistics`);
     if (!response.ok) {
       throw new Error('리소스 통계를 가져오는데 실패했습니다');
     }
@@ -153,4 +154,5 @@ class StatisticsService {
   }
 }
 
-export default new StatisticsService();
+// [advice from AI] 클래스와 인스턴스 둘 다 export하여 유연성 제공
+export default StatisticsService;

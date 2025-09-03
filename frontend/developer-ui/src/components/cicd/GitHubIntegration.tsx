@@ -70,7 +70,7 @@ import {
   Storage as StorageIcon,
   Info as InfoIcon,
   Link as LinkIcon,
-  Unlink as UnlinkIcon,
+  LinkOff as UnlinkIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   Code as CodeIcon,
@@ -263,8 +263,8 @@ const GitHubIntegration: React.FC = () => {
       setLoading(true);
       // [advice from AI] GitHub 연결 검증 및 추가
       const connection: GitHubConnection = {
-        id: Date.now().toString(),
         ...newConnection as GitHubConnection,
+        id: Date.now().toString(),
         status: 'connected',
         lastSync: new Date().toISOString()
       };
@@ -291,8 +291,8 @@ const GitHubIntegration: React.FC = () => {
       setLoading(true);
       // [advice from AI] 이미지 빌드 트리거
       const build: ImageBuild = {
-        id: Date.now().toString(),
         ...newBuild as ImageBuild,
+        id: Date.now().toString(),
         buildStatus: 'building',
         registry: 'ecr.aws.com/ecp-ai',
         createdAt: new Date().toISOString(),
@@ -321,8 +321,8 @@ const GitHubIntegration: React.FC = () => {
       setLoading(true);
       // [advice from AI] 배포 정책 추가
       const policy: DeploymentPolicy = {
-        id: Date.now().toString(),
-        ...newPolicy as DeploymentPolicy
+        ...newPolicy as DeploymentPolicy,
+        id: Date.now().toString()
       };
 
       setPolicies(prev => [...prev, policy]);

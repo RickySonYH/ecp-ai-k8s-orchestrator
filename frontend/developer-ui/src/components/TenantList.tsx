@@ -49,19 +49,9 @@ import {
   Visibility as ViewIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import TenantDataServiceFactory, { TenantDataServiceInterface } from '../services/TenantDataService.ts';
+import TenantDataServiceFactory, { TenantDataServiceInterface, TenantSummary } from '../services/TenantDataService';
 
-// 타입 정의
-interface TenantSummary {
-  tenant_id: string;
-  name?: string;
-  status: string;
-  preset: string;
-  is_demo: boolean;
-  services_count: number;
-  created_at: string;
-  dataSource?: string;
-}
+// [advice from AI] TenantSummary는 TenantDataService에서 임포트하므로 제거
 
 interface TenantListProps {
   isDemoMode?: boolean;
@@ -250,7 +240,7 @@ const TenantList: React.FC<TenantListProps> = ({
       const importedData = JSON.parse(importData);
       if (Array.isArray(importedData)) {
         setLoading(true);
-        await dataService.importTenants(importedData);
+        await dataService.importData?.(JSON.stringify(importedData));
         setSnackbarMessage('데이터 가져오기가 완료되었습니다.');
         setSnackbarOpen(true);
         setImportDialogOpen(false);
@@ -274,7 +264,7 @@ const TenantList: React.FC<TenantListProps> = ({
     if (window.confirm('모든 테넌트 데이터를 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
       setLoading(true);
       try {
-        await dataService.resetAllData();
+        await dataService.resetData?.();
         setSnackbarMessage('데이터가 초기화되었습니다.');
         setSnackbarOpen(true);
         onRefresh();

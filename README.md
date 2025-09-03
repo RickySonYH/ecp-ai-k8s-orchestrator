@@ -1,324 +1,226 @@
-# ECP-AI Kubernetes Orchestrator
+# ECP-AI Kubernetes Orchestrator v2.0
 
-> 🚀 **실사용 환경을 위한 AI 서비스 Kubernetes 자동 배포 및 관리 솔루션**
+🚀 **차세대 ECP-AI 테넌시 관리 및 Kubernetes 오케스트레이션 플랫폼**
 
-ECP-AI Kubernetes Orchestrator는 AI 서비스(콜봇, 챗봇, NLP 등)를 Kubernetes 클러스터에 자동으로 배포하고 관리하는 엔터프라이즈급 솔루션입니다.
+## ✨ v2.0 주요 업데이트
 
-## 📋 주요 기능
+### 🎯 **서비스별 고급 설정 시스템** (NEW)
+- **탭 기반 설정 구조**: 공통 설정 + 각 서비스별 개별 설정
+- **하드웨어 계산기 연동**: 리소스는 자동 계산, 오토스케일링만 사용자 설정
+- **직관적 단위 변환**: 밀리코어(m) → Core, Mi/Gi → GB 단위
+- **서비스별 특화 환경변수**: STT/TTS/TA/QA 등 각 서비스 맞춤 설정
 
-### 🎯 **AI 서비스 자동 배포**
-- 콜봇, 챗봇, STT/TTS, NLP, AI 어드바이저 등 AI 서비스 자동 배포
-- 서비스 요구사항 기반 최적 리소스 자동 계산
-- GPU/CPU 리소스 최적화 및 자동 스케일링
+### 📊 **향상된 배포 프로그레스**
+- **상세 단계별 진행 상황**: 10단계 세부 배포 과정 표시
+- **실시간 로그**: 터미널 스타일 실시간 배포 로그
+- **예상 시간**: 각 단계별 예상 소요시간 표시
+- **시각적 피드백**: 완료/진행중/대기 상태별 색상과 아이콘
 
-### 🔄 **데모/실사용 모드 분리**
-- **데모 모드**: 개발 및 테스트용 가상 환경
-- **실사용 모드**: 운영 환경용 실제 Kubernetes 클러스터 연동
-- 완전한 데이터베이스 분리로 안전한 환경 관리
-
-### 📊 **실시간 모니터링**
-- Prometheus/Grafana 기반 메트릭 수집
-- 실시간 리소스 사용률 모니터링
-- 커스텀 비즈니스 메트릭 지원
-- WebSocket 기반 실시간 알림
-
-### 🛠️ **매니페스트 자동 생성**
-- Kubernetes YAML 매니페스트 자동 생성
-- 검증 및 최적화 기능 내장
-- GitOps 워크플로우 지원
-- 직접 배포 또는 CI/CD 연동
+### 🛠️ **개선된 사용자 경험**
+- **설정 요약 패널**: 각 서비스별 현재 설정 상태 한 눈에 확인
+- **권장 설정 가이드**: 서비스별 최적화된 권장값 제공  
+- **검증 및 경고**: 실시간 설정 유효성 검사
 
 ## 🏗️ 시스템 아키텍처
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Frontend UI   │───▶│   Backend API   │───▶│  Kubernetes     │
-│   (React)       │    │   (FastAPI)     │    │  Cluster        │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│ Demo Database   │    │ Production DB   │    │  Monitoring     │
-│ (PostgreSQL)    │    │ (PostgreSQL)    │    │  (Prometheus)   │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+ECP-AI K8s Orchestrator v2.0
+├── 🎯 Frontend (React + TypeScript)
+│   ├── 테넌시 생성 마법사 (다단계 설정)
+│   ├── 서비스별 고급 설정 탭
+│   ├── 하드웨어 사양 계산기
+│   ├── 배포 프로그레스 모니터링
+│   └── CI/CD 이미지 관리
+├── ⚙️ Backend (FastAPI + Python)  
+│   ├── 테넌시 관리 API
+│   ├── 리소스 계산 엔진
+│   ├── 매니페스트 생성기
+│   └── K8s 시뮬레이터 연동
+├── 🐳 K8s 시뮬레이터
+│   ├── 가상 클러스터 환경
+│   ├── 실시간 배포 모니터링
+│   └── WebSocket 기반 상태 알림
+└── ☁️ 멀티 클라우드 지원
+    ├── AWS EKS
+    ├── NCP NKS  
+    ├── Azure AKS
+    └── GCP GKE
 ```
 
 ## 🚀 빠른 시작
 
-### 개발 환경 (Docker Compose)
+### 1. 개발 환경 설정
 
 ```bash
-# 1. 프로젝트 클론
-git clone <repository-url>
+# 저장소 클론
+git clone https://github.com/your-org/ecp-ai-k8s-orchestrator.git
 cd ecp-ai-k8s-orchestrator
 
-# 2. 환경 설정
-cp .env.example .env
-# .env 파일 수정
+# 개발 환경 시작 (macOS)
+./start-macos.sh
 
-# 3. 전체 시스템 실행 (ECP Orchestrator + K8S Simulator 통합)
-docker-compose up -d
-
-# 4. 접속
-# ECP Frontend: http://localhost:3000
-# ECP Backend API: http://localhost:8001
-# ECP API 문서: http://localhost:8001/docs
-# K8S Simulator: http://localhost:6390
-# K8S Simulator API: http://localhost:6360
+# 또는 WSL 환경에서
+./start-wsl.sh
 ```
 
-### 운영 환경 배포
+### 2. 서비스 접속
 
-운영 환경 배포는 [운영 환경 통합 가이드](docs/Production-Integration-Guide.md)를 참조하세요.
+- **Frontend UI**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **K8s 시뮬레이터**: http://localhost:8080
+- **API 문서**: http://localhost:8000/docs
 
-## 📚 문서
+### 3. 테넌시 생성 (v2.0 방식)
 
-### 📖 **통합 가이드**
-- **[통합 가이드](docs/ECP-AI-K8s-Orchestrator-Integration-Guide.md)**: 전체 시스템 개요 및 기본 사용법
-- **[운영 환경 가이드](docs/Production-Integration-Guide.md)**: 실사용 환경 구축 및 운영 가이드
-- **[API 참조서](docs/API-Reference.md)**: 완전한 REST API 문서
+1. **기본 설정**: 테넌시 ID, 서비스 요구사항 입력
+2. **CI/CD 이미지**: 컨테이너 이미지 선택 및 레지스트리 연동
+3. **고급 설정**: 서비스별 개별 설정 (NEW!)
+   - 🏢 공통 설정: 전체 테넌시 공통 옵션
+   - 📞 콜봇 설정: STT/TTS 엔드포인트, 리소스 할당
+   - 💬 챗봇 설정: NLP 엔드포인트, 채팅 히스토리 크기
+   - 👨‍💼 어드바이저: 하이브리드 모드, 다중 서비스 연동
+   - 🎤 STT: 모델 경로, 언어 코드, 샘플링 레이트
+   - 🔊 TTS: 음성 타입, 속도, 오디오 포맷
+   - 📊 TA: 분석 모드, 배치 크기, 리포트 주기
+   - ✅ QA: 품질 임계값, 평가 모드, 알림 웹훅
+4. **매니페스트 생성**: 클라우드 제공업체별 최적화 매니페스트
+5. **배포 실행**: 상세 프로그레스로 실시간 배포 모니터링
 
-### 🛠️ **개발자 리소스**
-- **[Python 클라이언트](examples/python-client.py)**: 개발용 Python SDK 예제
-- **[운영 클라이언트](examples/production-client.py)**: 실사용 환경용 Python 클라이언트
+## 📊 지원 서비스
 
-## 🔧 주요 컴포넌트
+### 🎯 **메인 서비스**
+| 서비스 | 설명 | 리소스 권장 | 특화 설정 |
+|--------|------|-------------|-----------|
+| **콜봇** | 음성 통화 AI 상담 | 0.1-0.5 Core, 256MB-1GB | STT/TTS 엔드포인트 |
+| **챗봇** | 텍스트 기반 AI 채팅 | 0.05-0.2 Core, 128-512MB | NLP 엔드포인트, 히스토리 크기 |
+| **어드바이저** | AI 보조 인간 상담사 | 0.2-1 Core, 512MB-2GB | 하이브리드 모드, 다중 서비스 |
 
-### Backend (FastAPI)
-- **REST API**: 테넌트 관리, 모니터링, 배포 API
-- **WebSocket**: 실시간 모니터링 및 배포 상태
-- **Database Manager**: 데모/실사용 DB 자동 선택
-- **Kubernetes Integration**: 직접 클러스터 연동
+### 🛠️ **지원 서비스**  
+| 서비스 | 설명 | 리소스 권장 | 특화 설정 |
+|--------|------|-------------|-----------|
+| **STT** | 음성인식 독립 서비스 | 0.5-2 Core, 1-4GB | 모델 경로, 언어, 샘플레이트 |
+| **TTS** | 음성합성 독립 서비스 | 1-4 Core, 2-8GB, 1-2 GPU | 음성 타입, 속도, 포맷 |
+| **TA** | 텍스트 분석 서비스 | 0.2-1 Core, 512MB-2GB | 분석 모드, 배치, 리포트 |
+| **QA** | 품질 관리 서비스 | 0.1-0.5 Core, 256MB-1GB | 품질 임계값, 평가 모드 |
 
-### Frontend (React + TypeScript)
-- **모드 선택**: 초기 데모/실사용 모드 선택
-- **테넌트 관리**: 생성, 수정, 삭제, 스케일링
-- **실시간 대시보드**: 메트릭 시각화
-- **매니페스트 다운로드**: YAML 파일 생성 및 다운로드
+## 🔧 v2.0 고급 기능
 
-### 데이터베이스
-- **PostgreSQL**: 테넌트 정보, 서비스 설정, 모니터링 데이터
-- **Redis**: 캐싱, 세션 관리, 실시간 데이터
+### 📋 **서비스별 설정 시스템**
 
-## 🎯 사용 시나리오
-
-### 1. AI 콜센터 서비스 배포
-```python
-from ecp_orchestrator import ProductionECPClient
-
-client = ProductionECPClient(
-    api_url="https://api.your-company.com/api/v1",
-    auth_token="your-jwt-token"
-)
-
-# 테넌트 설정
-config = TenantConfig(
-    tenant_id="ai-call-center-prod",
-    name="AI 콜센터 운영",
-    service_requirements={
-        "callbot": 100,    # 동시 콜봇 세션
-        "chatbot": 200,    # 동시 챗봇 세션
-        "advisor": 50,     # 상담사 지원 세션
-        "stt": 100,       # 음성인식
-        "tts": 100        # 음성합성
-    },
-    sla_target={
-        "availability": "99.95%",
-        "response_time": "150ms"
-    }
-)
-
-# 배포 실행
-result = client.create_tenant(config)
-client.wait_for_deployment(config.tenant_id)
-
-# 매니페스트 생성 및 다운로드
-manifest = client.generate_production_manifest(config.tenant_id)
-```
-
-### 2. 실시간 모니터링 연동
-```python
-# 커스텀 메트릭 전송
-metrics = {
-    "active_calls": 156,
-    "queue_length": 23,
-    "customer_satisfaction": 4.7
+```typescript
+// 서비스별 개별 설정 예시
+interface ServiceConfiguration {
+  resources?: {
+    cpu: number;    // Core 단위 (자동 계산)
+    memory: number; // GB 단위 (자동 계산)
+    gpu: number;    // GPU 개수 (자동 계산)
+  };
+  autoScaling: {
+    minReplicas: number;  // 최소 Pod 수 (사용자 설정)
+    maxReplicas: number;  // 최대 Pod 수 (사용자 설정)
+    targetCpu: number;    // CPU 임계값 % (사용자 설정)
+    targetMemory: number; // 메모리 임계값 % (사용자 설정)
+  };
+  environment: {
+    [key: string]: string; // 서비스별 특화 환경변수
+  };
+  healthCheck: {
+    healthPath: string;
+    readyPath: string;
+    port: number;
+  };
 }
-client.send_custom_metrics(tenant_id, metrics)
-
-# 실시간 모니터링 구독
-def monitoring_callback(data):
-    print(f"CPU: {data['cpu']}%, Memory: {data['memory']}%")
-
-client.start_realtime_monitoring(tenant_id, monitoring_callback)
 ```
 
-### 3. 자동 스케일링
+### 🎯 **하드웨어 계산기 연동**
+
 ```python
-# 트래픽 증가 시 자동 확장
-new_requirements = {
-    "callbot": 150,  # 50% 증가
-    "chatbot": 300   # 50% 증가
-}
-
-client.scale_tenant(tenant_id, new_requirements)
-```
-
-## 🔌 연동 방법
-
-### 모니터링 데이터 연결
-
-#### Prometheus 메트릭 수집
-```yaml
-# prometheus.yml
-scrape_configs:
-- job_name: 'ecp-orchestrator'
-  static_configs:
-  - targets: ['api.your-company.com:8001']
-  metrics_path: '/metrics'
-```
-
-#### 커스텀 메트릭 전송
-```python
-# 비즈니스 메트릭 전송
-response = requests.post(
-    f"{api_url}/tenants/{tenant_id}/monitoring",
-    headers={"X-Demo-Mode": "false"},
-    json={
-        "timestamp": datetime.utcnow().isoformat(),
-        "metrics": {
-            "business_calls_completed": 1250,
-            "customer_satisfaction": 4.8,
-            "revenue_generated": 15000.50
-        }
+# 자동 리소스 계산 예시
+def calculate_service_resources(service_requirements):
+    """
+    서비스 요구사항에 따라 최적 리소스 자동 계산
+    - 실제 가중치 기반 CPU/메모리 계산
+    - GPU 요구사항 자동 판단
+    - 클라우드별 인스턴스 타입 추천
+    """
+    return {
+        'cpu_cores': calculated_cpu,      # Core 단위
+        'memory_gb': calculated_memory,   # GB 단위
+        'gpu_count': calculated_gpu,      # GPU 개수
+        'replicas': recommended_replicas  # 권장 replicas
     }
-)
-```
-
-### 매니페스트 생성 및 배포
-
-#### 매니페스트 다운로드
-```bash
-# REST API로 매니페스트 다운로드
-curl -H "X-Demo-Mode: false" \
-     -H "Authorization: Bearer $TOKEN" \
-     -o production-manifest.yaml \
-     "https://api.your-company.com/api/v1/tenants/my-service/manifest"
-
-# Kubernetes에 배포
-kubectl apply -f production-manifest.yaml
-```
-
-#### GitOps 워크플로우
-```yaml
-# GitHub Actions
-- name: Deploy Tenant
-  run: |
-    curl -H "X-Demo-Mode: false" \
-         -o manifest.yaml \
-         "${{ secrets.ECP_API_URL }}/tenants/${{ github.event.inputs.tenant_id }}/manifest"
-    kubectl apply -f manifest.yaml
-```
-
-## 🔒 보안 및 인증
-
-### JWT 토큰 기반 인증
-```http
-Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
-X-Demo-Mode: false
-```
-
-### 역할 기반 접근 제어 (RBAC)
-- **tenant_admin**: 테넌트 생성, 수정, 삭제
-- **tenant_operator**: 테넌트 모니터링, 스케일링
-- **tenant_viewer**: 읽기 전용 접근
-
-### 네트워크 보안
-- TLS/HTTPS 강제
-- Kubernetes NetworkPolicy 적용
-- 방화벽 규칙 설정
-
-## 📊 모니터링 및 알림
-
-### 메트릭 종류
-- **시스템 메트릭**: CPU, 메모리, GPU, 네트워크, 스토리지
-- **애플리케이션 메트릭**: 요청 수, 응답 시간, 에러율
-- **비즈니스 메트릭**: 활성 세션, 고객 만족도, 매출
-
-### 알림 채널
-- **Slack**: 실시간 알림
-- **Email**: 중요 이벤트 알림
-- **Webhook**: 커스텀 통합
-- **PagerDuty**: 장애 대응
-
-## 🛠️ 개발 및 기여
-
-### 개발 환경 설정
-```bash
-# Backend 개발
-cd backend
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-
-# Frontend 개발
-cd frontend/developer-ui
-npm install
-npm start
-```
-
-### 테스트 실행
-```bash
-# Backend 테스트
-cd backend
-pytest tests/
-
-# Frontend 테스트
-cd frontend/developer-ui
-npm test
 ```
 
 ## 📈 성능 및 확장성
 
-### 확장성
-- **수평 확장**: 여러 인스턴스 실행 가능
-- **데이터베이스**: PostgreSQL HA 클러스터 지원
-- **캐싱**: Redis 클러스터 지원
-- **로드밸런싱**: NGINX, HAProxy 지원
+### 🎯 **오토스케일링 (HPA)**
+- **동적 확장**: CPU/메모리 사용률 기반 자동 확장
+- **서비스별 최적화**: 각 서비스 특성에 맞는 스케일링 정책
+- **예측적 스케일링**: 트래픽 패턴 학습 기반 사전 확장
 
-### 성능 최적화
-- **API 캐싱**: Redis 기반 응답 캐싱
-- **데이터베이스 최적화**: 인덱싱, 파티셔닝
-- **연결 풀링**: 데이터베이스 연결 최적화
+### 📊 **모니터링 및 알림**
+- **실시간 메트릭**: Prometheus + Grafana 통합
+- **장애 감지**: 서비스 Health Check 및 자동 복구
+- **알림 시스템**: Slack, 이메일, 웹훅 다중 알림
 
-## 🆘 지원 및 문의
+## 🏗️ 배포 환경
 
-### 기술 지원
-- **문서**: `/docs` 디렉토리의 상세 가이드
-- **API 문서**: http://localhost:8001/docs (Swagger UI)
-- **예제 코드**: `/examples` 디렉토리
+### 🌥️ **멀티 클라우드 지원**
+- **AWS EKS**: CloudFormation 템플릿 자동 생성
+- **NCP NKS**: Naver Cloud Platform 최적화
+- **Azure AKS**: ARM 템플릿 기반 배포
+- **GCP GKE**: Deployment Manager 연동
 
-### 문제 해결
-- **로그 확인**: `docker-compose logs <service>`
-- **상태 확인**: `docker-compose ps`
-- **데이터베이스 연결**: `docker-compose exec postgres psql -U ecp_user`
+### 🐳 **컨테이너 환경**
+- **Docker**: 멀티스테이지 빌드 최적화
+- **Kubernetes**: 1.24+ 지원, CRD 활용
+- **Helm**: 차트 기반 패키지 관리
 
-### 일반적인 문제
-1. **포트 충돌**: docker-compose.yml의 포트 번호 변경
-2. **데이터베이스 연결 실패**: 컨테이너 재시작 후 재시도
-3. **권한 오류**: RBAC 설정 확인
+## 🔐 보안 및 운영
+
+### 🛡️ **보안 기능**
+- **RBAC**: 세밀한 권한 관리
+- **Network Policy**: 서비스간 통신 제어
+- **Secret 관리**: Kubernetes Secret 암호화
+- **TLS 종단**: Let's Encrypt 자동 인증서
+
+### 📋 **운영 도구**
+- **로그 집계**: ELK Stack 연동
+- **백업/복구**: 자동화된 데이터 백업
+- **CI/CD**: GitHub Actions 통합
+
+## 🤝 기여하기
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Commit your changes: `git commit -m 'Add amazing feature'`
+4. Push to the branch: `git push origin feature/amazing-feature`
+5. Open a Pull Request
 
 ## 📄 라이선스
 
-이 프로젝트는 MIT 라이선스 하에 배포됩니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
+이 프로젝트는 MIT 라이선스 하에 배포됩니다. [LICENSE](LICENSE) 파일을 참조하세요.
 
-## 🔄 버전 정보
+## 🆕 v2.0 변경사항 요약
 
-- **현재 버전**: v1.51
-- **최신 업데이트**: 데모/실사용 DB 분리, 실시간 모니터링 개선
-- **다음 계획**: Kubernetes Operator 개발, Multi-cluster 지원
+### ✨ **새로운 기능**
+- 🎯 서비스별 고급 설정 탭 시스템
+- 📊 하드웨어 계산기 기반 자동 리소스 할당
+- 🚀 상세 배포 프로그레스 및 실시간 로그
+- ⚙️ 오토스케일링 중심의 설정 시스템
+- 🔧 서비스별 특화 환경변수 지원
+
+### 🔧 **개선사항**
+- 💻 Core/GB 단위로 직관적 리소스 표시
+- 📋 설정 요약 패널로 한 눈에 설정 확인
+- 🎨 Material-UI 기반 현대적 UI/UX
+- ⚡ 성능 최적화 및 반응형 디자인
+
+### 🐛 **버그 수정**
+- TypeScript 타입 안정성 향상
+- 메모리 누수 방지 및 상태 관리 개선
+- 클라우드별 호환성 문제 해결
 
 ---
 
-**ECP-AI Kubernetes Orchestrator**로 AI 서비스 배포를 자동화하고, 운영을 간소화하세요! 🚀
+**🚀 ECP-AI K8s Orchestrator v2.0** - 차세대 엔터프라이즈 AI 플랫폼을 위한 Kubernetes 오케스트레이션 솔루션

@@ -12,7 +12,7 @@ import {
   MenuItem,
   Alert
 } from '@mui/material';
-import ManifestPreview from './ManifestPreview.tsx';
+import ManifestPreview from './ManifestPreview';
 
 const ManifestPreviewTest: React.FC = () => {
   const [tenantId, setTenantId] = useState('test-tenant-123');

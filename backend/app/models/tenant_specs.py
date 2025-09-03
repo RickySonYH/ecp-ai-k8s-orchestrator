@@ -21,9 +21,18 @@ class GPUType(str, Enum):
 
 class CloudProvider(str, Enum):
     """클라우드 제공업체"""
-    AWS = "aws"
-    NCP = "ncp"
     IAAS = "iaas"  # 기본 IaaS 환경
+    AWS = "aws"  # Amazon Web Services
+    NCP = "ncp"  # Naver Cloud Platform
+    AZURE = "azure"  # Microsoft Azure
+    GCP = "gcp"  # Google Cloud Platform
+    ORACLE = "oracle"  # Oracle Cloud Infrastructure
+    IBM = "ibm"  # IBM Cloud
+    ALIBABA = "alibaba"  # Alibaba Cloud
+    TENCENT = "tencent"  # Tencent Cloud
+    VULTR = "vultr"  # Vultr
+    LINODE = "linode"  # Linode
+    DIGITALOCEAN = "digitalocean"  # DigitalOcean
 
 
 class HealthCheckType(str, Enum):
@@ -336,6 +345,7 @@ class TenantSpecs(BaseModel):
     # 기본 정보
     tenant_id: str = Field(..., description="테넌시 ID")
     preset: PresetType = Field(..., description="테넌시 프리셋")
+    tenancy_mode: str = Field("large", description="테넌시 모드: 'small' 또는 'large'")  # [advice from AI] 테넌시 모드 추가
     gpu_type: GPUType = Field(..., description="GPU 타입")
     cloud_provider: CloudProvider = Field(CloudProvider.IAAS, description="클라우드 제공업체")  # [advice from AI] 클라우드 제공업체 추가
     
@@ -385,6 +395,7 @@ class TenantCreateRequest(BaseModel):
     """테넌시 생성 요청"""
     tenant_id: str = Field(..., description="테넌시 ID")
     service_requirements: ServiceRequirements = Field(..., description="서비스 요구사항")
+    tenancy_mode: str = Field("large", description="테넌시 모드: 'small'(소규모, 공용 인프라 제외) 또는 'large'(대규모, 전체 리소스)")  # [advice from AI] 테넌시 모드 필드 추가
     gpu_type: GPUType = Field(GPUType.AUTO, description="GPU 타입")
     cloud_provider: CloudProvider = Field(CloudProvider.IAAS, description="클라우드 제공업체")  # [advice from AI] 클라우드 제공업체 선택 추가
     auto_deploy: bool = Field(True, description="자동 배포 여부")

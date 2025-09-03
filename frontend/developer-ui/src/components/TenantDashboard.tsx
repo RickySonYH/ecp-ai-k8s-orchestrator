@@ -304,7 +304,97 @@ export const TenantDashboard: React.FC<{ tenantId: string; onTenantDeleted: (ten
 }) => {
   const theme = useTheme();
   const [currentTab, setCurrentTab] = useState(0);
-  const [data, setData] = useState(demoTenantData);
+  const [data, setData] = useState<any>({
+    tenant: { 
+      preset: 'micro',
+      name: `테넌시 ${tenantId}`,
+      status: 'running',
+      description: 'ECP-AI 테넌시'
+    },
+    // [advice from AI] 초기 서비스 데이터 추가
+    services: [
+      {
+        name: 'callbot',
+        icon: <CallIcon />,
+        status: 'running',
+        replicas: 3,
+        targetReplicas: 3,
+        color: 'success',
+        port: 8080
+      },
+      {
+        name: 'chatbot',
+        icon: <ChatIcon />,
+        status: 'running',
+        replicas: 2,
+        targetReplicas: 2,
+        color: 'primary',
+        port: 8081
+      },
+      {
+        name: 'advisor',
+        icon: <PersonIcon />,
+        status: 'running',
+        replicas: 1,
+        targetReplicas: 1,
+        color: 'secondary',
+        port: 8082
+      }
+    ],
+    // [advice from AI] 초기 로그 데이터 추가
+    logs: [
+      {
+        id: 1,
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        service: 'callbot',
+        message: '서비스가 정상적으로 시작되었습니다'
+      },
+      {
+        id: 2,
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        service: 'chatbot',
+        message: '새로운 채팅 세션이 시작되었습니다'
+      }
+    ],
+    // [advice from AI] 초기 resources 데이터 추가
+    resources: {
+      gpu: {
+        total: 3,
+        used: 2.1,
+        percentage: 70,
+        temperature: 68,
+        power: 220
+      },
+      cpu: {
+        total: 32,
+        used: 22.4,
+        percentage: 70,
+        load: 0.72
+      },
+      memory: {
+        total: 64,
+        used: 45.2,
+        percentage: 71,
+        swap: 2.1
+      },
+      storage: {
+        total: 500,
+        used: 230,
+        percentage: 46,
+        iops: 1250
+      }
+    },
+    // [advice from AI] 초기 performance 데이터 추가
+    performance: {
+      responseTime: 145,
+      throughput: 1250,
+      errorRate: 0.02,
+      availability: 99.7,
+      uptime: 168
+    }
+  });
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [scaleDialogOpen, setScaleDialogOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<ServiceInstance | null>(null);
@@ -312,32 +402,79 @@ export const TenantDashboard: React.FC<{ tenantId: string; onTenantDeleted: (ten
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
 
-  // 실시간 데이터 업데이트 (데모용)
+  // [advice from AI] 실제 테넌트 데이터 로드
+  const loadTenantData = async () => {
+    try {
+      const response = await fetch(`/api/v1/tenants/${tenantId}`);
+      if (response.ok) {
+        const tenantData = await response.json();
+        
+        // 백엔드 데이터를 UI 형식으로 변환
+        setData(prevData => ({
+          ...prevData,
+          tenant: {
+            preset: tenantData.preset || 'micro',
+            name: tenantData.name || `테넌시 ${tenantId}`,
+            status: tenantData.status || 'running',
+            description: tenantData.description || 'ECP-AI 테넌시'
+          }
+        }));
+      }
+    } catch (error) {
+      console.error('테넌트 데이터 로드 실패:', error);
+    }
+  };
+
+  // 컴포넌트 마운트 시 실제 데이터 로드
+  useEffect(() => {
+    loadTenantData();
+  }, [tenantId]);
+
+  // 실시간 데이터 업데이트 (데모용) - 상태별 제어
   useEffect(() => {
     const interval = setInterval(() => {
-      setData(prevData => ({
-        ...prevData,
-        resources: {
-          gpu: {
-            ...prevData.resources.gpu,
-            used: Math.max(1.5, Math.min(2.8, prevData.resources.gpu.used + (Math.random() > 0.5 ? 0.1 : -0.1))),
-            temperature: Math.max(60, Math.min(75, prevData.resources.gpu.temperature + (Math.random() > 0.5 ? 1 : -1))),
-          },
-          cpu: {
-            ...prevData.resources.cpu,
-            used: Math.max(18, Math.min(28, prevData.resources.cpu.used + (Math.random() > 0.5 ? 0.5 : -0.5))),
-            load: Math.max(0.6, Math.min(0.85, prevData.resources.cpu.load + (Math.random() > 0.5 ? 0.02 : -0.02))),
-          },
-          memory: {
-            ...prevData.resources.memory,
-            used: Math.max(9, Math.min(13, prevData.resources.memory.used + (Math.random() > 0.5 ? 0.2 : -0.2))),
-          },
-          storage: {
-            ...prevData.resources.storage,
-            used: Math.max(44, Math.min(48, prevData.resources.storage.used + (Math.random() > 0.5 ? 0.1 : -0.1))),
-          }
+      setData((prevData: any) => {
+        // [advice from AI] 테넌트가 중지 상태이면 데이터 업데이트 하지 않음
+        if (prevData.tenant?.status === 'pending' || prevData.tenant?.status === 'failed') {
+          return prevData; // 상태가 pending이나 failed이면 데이터 변경 없음
         }
-      }));
+        
+        // [advice from AI] resources와 performance 객체가 존재하는지 확인
+        if (!prevData.resources || !prevData.performance) return prevData;
+        
+        return {
+          ...prevData,
+          resources: {
+            gpu: {
+              ...prevData.resources.gpu,
+              used: Math.max(1.5, Math.min(2.8, (prevData.resources.gpu?.used || 2.1) + (Math.random() > 0.5 ? 0.1 : -0.1))),
+              temperature: Math.max(60, Math.min(75, (prevData.resources.gpu?.temperature || 68) + (Math.random() > 0.5 ? 1 : -1))),
+            },
+            cpu: {
+              ...prevData.resources.cpu,
+              used: Math.max(18, Math.min(28, (prevData.resources.cpu?.used || 22.4) + (Math.random() > 0.5 ? 0.5 : -0.5))),
+              load: Math.max(0.6, Math.min(0.85, (prevData.resources.cpu?.load || 0.72) + (Math.random() > 0.5 ? 0.02 : -0.02))),
+            },
+            memory: {
+              ...prevData.resources.memory,
+              used: Math.max(9, Math.min(13, (prevData.resources.memory?.used || 45.2) + (Math.random() > 0.5 ? 0.2 : -0.2))),
+            },
+            storage: {
+              ...prevData.resources.storage,
+              used: Math.max(44, Math.min(48, (prevData.resources.storage?.used || 230) + (Math.random() > 0.5 ? 0.1 : -0.1))),
+            }
+          },
+          // [advice from AI] performance 데이터도 실시간 업데이트
+          performance: {
+            ...prevData.performance,
+            responseTime: Math.max(100, Math.min(200, (prevData.performance?.responseTime || 145) + (Math.random() > 0.5 ? 5 : -5))),
+            throughput: Math.max(1000, Math.min(1500, (prevData.performance?.throughput || 1250) + (Math.random() > 0.5 ? 10 : -10))),
+            errorRate: Math.max(0, Math.min(0.1, (prevData.performance?.errorRate || 0.02) + (Math.random() > 0.5 ? 0.001 : -0.001))),
+            availability: Math.max(99.0, Math.min(99.9, (prevData.performance?.availability || 99.7) + (Math.random() > 0.5 ? 0.01 : -0.01))),
+            uptime: (prevData.performance?.uptime || 168) + (1/3600) // 1초씩 증가
+          }
+        };
+      });
       setLastUpdate(new Date());
     }, 3000);
 
@@ -354,9 +491,9 @@ export const TenantDashboard: React.FC<{ tenantId: string; onTenantDeleted: (ten
   // 스케일링 적용
   const handleScaleApply = () => {
     if (selectedService) {
-      setData(prevData => ({
+      setData((prevData: any) => ({
         ...prevData,
-        services: prevData.services.map(s => 
+        services: prevData.services.map((s: any) => 
           s.name === selectedService.name 
             ? { ...s, targetReplicas: scaleReplicas }
             : s
@@ -376,7 +513,7 @@ export const TenantDashboard: React.FC<{ tenantId: string; onTenantDeleted: (ten
   };
 
   // 프리셋 정보 가져오기
-  const presetInfo = presetRules[data.tenant.preset];
+  const presetInfo = presetRules[data.tenant.preset as keyof typeof presetRules];
 
   return (
     <Box sx={{ p: 3 }}>
@@ -444,14 +581,14 @@ export const TenantDashboard: React.FC<{ tenantId: string; onTenantDeleted: (ten
               </Avatar>
               <Box>
                 <Typography variant="h4" component="div" sx={{ fontWeight: 'bold' }}>
-                  {data.resources.gpu.used.toFixed(1)}/{data.resources.gpu.total}
+                  {data.resources?.gpu?.used?.toFixed(1) || 0}/{data.resources?.gpu?.total || 0}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   GPU 사용량
                 </Typography>
                 <LinearProgress 
                   variant="determinate" 
-                  value={data.resources.gpu.percentage} 
+                  value={data.resources?.gpu?.percentage || 0} 
                   sx={{ mt: 1, height: 6, borderRadius: 3 }}
                 />
               </Box>
@@ -466,14 +603,14 @@ export const TenantDashboard: React.FC<{ tenantId: string; onTenantDeleted: (ten
               </Avatar>
               <Box>
                 <Typography variant="h4" component="div" sx={{ fontWeight: 'bold' }}>
-                  {data.resources.cpu.used.toFixed(1)}/{data.resources.cpu.total}
+                  {data.resources?.cpu?.used?.toFixed(1) || 0}/{data.resources?.cpu?.total || 0}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   CPU 코어
                 </Typography>
                 <LinearProgress 
                   variant="determinate" 
-                  value={data.resources.cpu.percentage} 
+                  value={data.resources?.cpu?.percentage || 0} 
                   sx={{ mt: 1, height: 6, borderRadius: 3 }}
                 />
               </Box>
@@ -488,14 +625,14 @@ export const TenantDashboard: React.FC<{ tenantId: string; onTenantDeleted: (ten
               </Avatar>
               <Box>
                 <Typography variant="h4" component="div" sx={{ fontWeight: 'bold' }}>
-                  {data.resources.memory.used.toFixed(1)}/{data.resources.memory.total}
+                  {data.resources?.memory?.used?.toFixed(1) || 0}/{data.resources?.memory?.total || 0}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   메모리 (GB)
                 </Typography>
                 <LinearProgress 
                   variant="determinate" 
-                  value={data.resources.memory.percentage} 
+                  value={data.resources?.memory?.percentage || 0} 
                   sx={{ mt: 1, height: 6, borderRadius: 3 }}
                 />
               </Box>
@@ -532,33 +669,33 @@ export const TenantDashboard: React.FC<{ tenantId: string; onTenantDeleted: (ten
                   <Grid item xs={12} md={6}>
                     <Paper sx={{ p: 2 }}>
                       <Typography variant="subtitle2" gutterBottom>GPU 상세 정보</Typography>
-                      <Typography variant="body2">온도: {data.resources.gpu.temperature}°C</Typography>
-                      <Typography variant="body2">전력: {data.resources.gpu.power}W</Typography>
-                      <Typography variant="body2">사용률: {data.resources.gpu.percentage}%</Typography>
+                      <Typography variant="body2">온도: {data.resources?.gpu?.temperature || 0}°C</Typography>
+                      <Typography variant="body2">전력: {data.resources?.gpu?.power || 0}W</Typography>
+                      <Typography variant="body2">사용률: {data.resources?.gpu?.percentage || 0}%</Typography>
                     </Paper>
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <Paper sx={{ p: 2 }}>
                       <Typography variant="subtitle2" gutterBottom>CPU 상세 정보</Typography>
-                      <Typography variant="body2">로드: {(data.resources.cpu.load * 100).toFixed(1)}%</Typography>
-                      <Typography variant="body2">사용률: {data.resources.cpu.percentage}%</Typography>
-                      <Typography variant="body2">코어: {data.resources.cpu.total}개</Typography>
+                      <Typography variant="body2">로드: {((data.resources?.cpu?.load || 0) * 100).toFixed(1)}%</Typography>
+                      <Typography variant="body2">사용률: {data.resources?.cpu?.percentage || 0}%</Typography>
+                      <Typography variant="body2">코어: {data.resources?.cpu?.total || 0}개</Typography>
                     </Paper>
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <Paper sx={{ p: 2 }}>
                       <Typography variant="subtitle2" gutterBottom>메모리 상세 정보</Typography>
-                      <Typography variant="body2">사용률: {data.resources.memory.percentage}%</Typography>
-                      <Typography variant="body2">스왑: {data.resources.memory.swap}GB</Typography>
-                      <Typography variant="body2">총 용량: {data.resources.memory.total}GB</Typography>
+                      <Typography variant="body2">사용률: {data.resources?.memory?.percentage || 0}%</Typography>
+                      <Typography variant="body2">스왑: {data.resources?.memory?.swap || 0}GB</Typography>
+                      <Typography variant="body2">총 용량: {data.resources?.memory?.total || 0}GB</Typography>
                     </Paper>
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <Paper sx={{ p: 2 }}>
                       <Typography variant="subtitle2" gutterBottom>스토리지 상세 정보</Typography>
-                      <Typography variant="body2">사용률: {data.resources.storage.percentage}%</Typography>
-                      <Typography variant="body2">IOPS: {data.resources.storage.iops}</Typography>
-                      <Typography variant="body2">총 용량: {data.resources.storage.total}GB</Typography>
+                      <Typography variant="body2">사용률: {data.resources?.storage?.percentage || 0}%</Typography>
+                      <Typography variant="body2">IOPS: {data.resources?.storage?.iops || 0}</Typography>
+                      <Typography variant="body2">총 용량: {data.resources?.storage?.total || 0}GB</Typography>
                     </Paper>
                   </Grid>
                 </Grid>
@@ -576,23 +713,23 @@ export const TenantDashboard: React.FC<{ tenantId: string; onTenantDeleted: (ten
                 </Box>
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="body2" color="text.secondary">응답 시간</Typography>
-                  <Typography variant="h6" color="primary">{data.performance.responseTime}ms</Typography>
+                  <Typography variant="h6" color="primary">{data.performance?.responseTime || 0}ms</Typography>
                 </Box>
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="body2" color="text.secondary">처리량</Typography>
-                  <Typography variant="h6" color="secondary">{data.performance.throughput} req/s</Typography>
+                  <Typography variant="h6" color="secondary">{data.performance?.throughput || 0} req/s</Typography>
                 </Box>
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="body2" color="text.secondary">에러율</Typography>
-                  <Typography variant="h6" color="error">{data.performance.errorRate}%</Typography>
+                  <Typography variant="h6" color="error">{data.performance?.errorRate || 0}%</Typography>
                 </Box>
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="body2" color="text.secondary">가용성</Typography>
-                  <Typography variant="h6" color="success">{data.performance.availability}%</Typography>
+                  <Typography variant="h6" color="success">{data.performance?.availability || 0}%</Typography>
                 </Box>
                 <Box>
                   <Typography variant="body2" color="text.secondary">가동 시간</Typography>
-                  <Typography variant="h6" color="info">{data.performance.uptime}시간</Typography>
+                  <Typography variant="h6" color="info">{data.performance?.uptime || 0}시간</Typography>
                 </Box>
               </CardContent>
             </StyledCard>
@@ -611,7 +748,7 @@ export const TenantDashboard: React.FC<{ tenantId: string; onTenantDeleted: (ten
               </Typography>
             </Box>
             <Grid container spacing={2}>
-              {data.services.map((service) => (
+              {(data.services || []).map((service: any) => (
                 <Grid item xs={12} md={6} key={service.name}>
                   <Paper 
                     sx={{ 
@@ -702,7 +839,7 @@ export const TenantDashboard: React.FC<{ tenantId: string; onTenantDeleted: (ten
               </Typography>
             </Box>
             <List>
-              {data.logs.map((log) => (
+              {(data.logs || []).map((log: any) => (
                 <ListItem key={log.id} sx={{ px: 0 }}>
                   <ListItemIcon>
                     <LogLevelIcon level={log.level} />

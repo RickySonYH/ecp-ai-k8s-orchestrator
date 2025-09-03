@@ -52,6 +52,10 @@ async def startup_event():
     # Initialize database
     await init_db()
     
+    # [advice from AI] 알림 시스템 초기화
+    from api.routes import _initialize_base_alerts
+    await _initialize_base_alerts()
+    
     # Start monitoring engine
     await monitoring_engine.start()
     
@@ -69,6 +73,8 @@ async def shutdown_event():
 
 async def background_monitoring_task():
     """백그라운드 모니터링 태스크"""
+    alert_counter = 0  # [advice from AI] 알림 생성 주기 관리
+    
     while True:
         try:
             # Generate monitoring data
@@ -76,6 +82,13 @@ async def background_monitoring_task():
             
             # Check SLA status
             sla_status = await monitoring_engine.check_sla()
+            
+            # [advice from AI] 주기적으로 새로운 알림 생성 (2분마다)
+            alert_counter += 1
+            if alert_counter >= 24:  # 5초 * 24 = 2분
+                from api.routes import _generate_system_alerts
+                await _generate_system_alerts()
+                alert_counter = 0
             
             # Broadcast to WebSocket clients
             await websocket_manager.broadcast({
@@ -94,10 +107,20 @@ async def background_monitoring_task():
 
 @app.get("/")
 async def root():
-    """헬스체크 엔드포인트"""
+    """루트 엔드포인트"""
     return {
         "message": "K8S Simulator with SLA Monitoring",
         "status": "healthy",
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.get("/health")
+async def health_check():
+    """헬스체크 엔드포인트"""
+    return {
+        "status": "healthy",
+        "service": "k8s-simulator",
+        "version": "1.54.0",
         "timestamp": datetime.now().isoformat()
     }
 
@@ -125,3 +148,4 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+

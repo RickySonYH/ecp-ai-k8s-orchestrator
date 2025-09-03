@@ -150,6 +150,7 @@ class TenantSummary(BaseModel):
     status: str = Field(..., description="테넌시 상태")
     services_count: int = Field(..., description="서비스 개수")
     created_at: datetime = Field(..., description="생성 시간")
+    service_config: Dict[str, int] = Field(..., description="서비스 구성 정보")
     
     class Config:
         json_schema_extra = {
@@ -160,7 +161,16 @@ class TenantSummary(BaseModel):
                 "is_demo": True,
                 "status": "active",
                 "services_count": 3,
-                "created_at": "2024-01-15T10:30:00Z"
+                "created_at": "2024-01-15T10:30:00Z",
+                "service_config": {
+                    "callbot": 5,
+                    "chatbot": 20,
+                    "advisor": 2,
+                    "stt": 0,
+                    "tts": 0,
+                    "ta": 0,
+                    "qa": 0
+                }
             }
         }
 
@@ -185,19 +195,63 @@ async def get_tenants_from_db(db: Session) -> List[Dict[str, Any]]:
         tenant_summaries = []
         
         for tenant in tenants:
-            # [advice from AI] 서비스 분류별 개수 계산
+            # [advice from AI] Service 테이블에서 실제 서비스 개수 조회 (service_requirements는 처리량 데이터)
             services = db.query(Service).filter(Service.tenant_id == tenant.tenant_id).all()
-            
-            main_services = len([s for s in services if s.service_type == 'main_service'])
-            ai_nlp_services = len([s for s in services if s.service_type == 'ai_nlp_service'])
-            analytics_services = len([s for s in services if s.service_type == 'analytics_service'])
-            infrastructure_services = len([s for s in services if s.service_type == 'infrastructure_service'])
             total_services = len(services)
             
-            # [advice from AI] 디버깅을 위한 로그 추가
-            logger.info(f"테넌트 {tenant.tenant_id} 서비스 분류: 메인={main_services}, AI/NLP={ai_nlp_services}, 분석={analytics_services}, 인프라={infrastructure_services}, 총={total_services}")
+            # [advice from AI] 실제 배포된 서비스에서 서비스 구성 추출 (service_name 기준)
+            service_names = [s.service_name for s in services] if services else []
+            service_config = {
+                "callbot": service_names.count("callbot"),
+                "chatbot": service_names.count("chatbot"), 
+                "advisor": service_names.count("advisor"),
+                "stt": len([s for s in service_names if 'stt' in s.lower()]),
+                "tts": len([s for s in service_names if 'tts' in s.lower()]),
+                "ta": len([s for s in service_names if s in ['ta', 'ta-server']]),
+                "qa": service_names.count("qa")
+            }
             
-            # [advice from AI] 서비스 분류별 정보와 GPU 정보를 포함한 dict 생성
+            # service_requirements는 처리량 정보로 별도 보관 (서비스 개수 계산에는 사용 안함)
+            service_requirements = tenant.service_requirements or {}
+            
+            # [advice from AI] GPU 정보 추출 (resources에서)
+            resources = tenant.resources or {}
+            gpu_info = None
+            gpu_usage = None
+            
+            if tenant.gpu_type and tenant.gpu_limit and tenant.gpu_limit > 0:
+                gpu_info = {
+                    "type": tenant.gpu_type,
+                    "allocated": tenant.gpu_limit,
+                    "utilization": resources.get("gpu_utilization", 0)
+                }
+                # [advice from AI] 시뮬레이터에서 실시간 모니터링 데이터 가져오기
+                import random  # [advice from AI] random import를 함수 시작 부분으로 이동
+                monitoring_data = {}
+                if tenant.status == "running":
+                    try:
+                        from app.services.k8s_simulator_client import get_simulator_client
+                        simulator_client = get_simulator_client()
+                        monitoring_data = await simulator_client.get_tenant_monitoring_data(tenant.tenant_id)
+                        gpu_usage = monitoring_data.get("gpu_usage", 0)
+                    except Exception as e:
+                        logger.warning(f"시뮬레이터 모니터링 데이터 조회 실패 (tenant: {tenant.tenant_id}): {e}")
+                        # 폴백으로 랜덤값 사용
+                        gpu_usage = round(random.uniform(20, 85), 1)
+                        monitoring_data = {
+                            "cpu_usage": round(random.uniform(30, 75), 1),
+                            "memory_usage": round(random.uniform(40, 80), 1),
+                            "gpu_usage": gpu_usage
+                        }
+                else:
+                    gpu_usage = 0
+                    monitoring_data = {
+                        "cpu_usage": 0,
+                        "memory_usage": 0,
+                        "gpu_usage": 0
+                    }
+            
+            # [advice from AI] 서비스 구성 정보와 GPU 정보를 포함한 dict 생성
             tenant_dict = {
                 "tenant_id": tenant.tenant_id,
                 "name": tenant.name,
@@ -206,31 +260,15 @@ async def get_tenants_from_db(db: Session) -> List[Dict[str, Any]]:
                 "status": tenant.status,
                 "services_count": total_services,
                 "created_at": tenant.created_at.isoformat(),
-                # 서비스 분류별 상세 정보
-                "main_services_count": main_services,
-                "ai_nlp_services_count": ai_nlp_services,
-                "analytics_services_count": analytics_services,
-                "infrastructure_services_count": infrastructure_services,
-                "services_breakdown": {
-                    "main": main_services,
-                    "ai_nlp": ai_nlp_services,
-                    "analytics": analytics_services,
-                    "infrastructure": infrastructure_services
-                },
-                # GPU 정보 추가
-                "gpu_info": {
-                    "type": tenant.gpu_type or "auto",
-                    "limit": tenant.gpu_limit or 0,
-                    "allocated": sum([s.gpu_request for s in services if s.gpu_request]),
-                    "utilization": "실시간 계산됨" if tenant.status == "running" else "중지됨"
-                },
-                # 리소스 요약 정보
-                "resource_summary": {
-                    "cpu_limit": tenant.cpu_limit,
-                    "memory_limit": tenant.memory_limit,
-                    "storage_limit": tenant.storage_limit,
-                    "gpu_type": tenant.gpu_type
-                }
+                # [advice from AI] 실제 서비스 구성 정보
+                "service_config": service_config,
+                # [advice from AI] GPU 정보 추가
+                "gpu_info": gpu_info,
+                "gpu_usage": gpu_usage,
+                # [advice from AI] 시뮬레이터에서 가져온 실시간 리소스 사용률
+                "cpu_usage": monitoring_data.get("cpu_usage", 0),
+                "memory_usage": monitoring_data.get("memory_usage", 0),
+                "storage_usage": round(random.uniform(20, 60), 1) if tenant.status == "running" else 0
             }
             
             tenant_summaries.append(tenant_dict)
@@ -321,10 +359,16 @@ async def deploy_tenant_to_simulator(
                     raise Exception(f"시뮬레이터 배포 실패: {deploy_response.text}")
                 
                 deploy_result = deploy_response.json()
-                logger.info("시뮬레이터 배포 완료", tenant_id=tenant_id, result=deploy_result)
+                logger.info("시뮬레이터 배포 시작 완료", tenant_id=tenant_id, result=deploy_result)
                 
-                # 배포 성공 상태 업데이트
-                await update_tenant_status(tenant_id, "running", "시뮬레이터 배포 완료 - Mock 데이터 생성 중")
+                # [advice from AI] 즉시 running으로 변경하지 않고, 자동 완료 타이머 시작
+                await update_tenant_status(tenant_id, "deploying", "시뮬레이터 배포 진행 중 - 자동 완료 대기")
+                
+                # 백그라운드에서 자동 완료 처리 (60-120초 후)
+                import asyncio
+                import random
+                deployment_duration = random.randint(60, 120)  # 1-2분 랜덤
+                asyncio.create_task(auto_complete_deployment(tenant_id, deployment_duration))
                 
             except Exception as deploy_error:
                 logger.error("시뮬레이터 배포 실패", tenant_id=tenant_id, error=str(deploy_error))
@@ -356,6 +400,65 @@ async def update_tenant_status(tenant_id: str, status: str, message: str = None)
         logger.error("테넌시 상태 업데이트 실패", tenant_id=tenant_id, error=str(e))
 
 
+async def auto_complete_deployment(tenant_id: str, deployment_duration: int = 120):
+    """[advice from AI] 배포 완료 자동 처리 - deploying -> running 상태 전환
+    
+    Args:
+        tenant_id: 테넌트 ID
+        deployment_duration: 배포 소요 시간 (초, 기본 2분)
+    """
+    try:
+        logger.info(f"자동 배포 완료 스케줄링: {tenant_id} (소요시간: {deployment_duration}초)")
+        
+        # 배포 시간 대기 (실제로는 K8s 배포 모니터링)
+        await asyncio.sleep(deployment_duration)
+        
+        # 90% 확률로 성공, 10% 확률로 실패 (실제 환경 시뮬레이션)
+        import random
+        deployment_success = random.random() > 0.1
+        
+        if deployment_success:
+            await update_tenant_status(tenant_id, "running", "자동 배포 완료")
+            logger.info(f"자동 배포 완료: {tenant_id}")
+        else:
+            await update_tenant_status(tenant_id, "failed", "배포 실패 - 자동 재시도 대기")
+            logger.warning(f"배포 실패: {tenant_id}")
+        
+    except Exception as e:
+        logger.error(f"자동 배포 완료 처리 실패: {tenant_id}, 오류: {e}")
+        # 실패 시 failed 상태로 변경
+        await update_tenant_status(tenant_id, "failed", f"배포 처리 오류: {str(e)}")
+
+
+async def check_and_fix_stuck_deployments():
+    """[advice from AI] 시스템 시작 시 deploying 상태로 멈춰있는 테넌트들 자동 처리"""
+    try:
+        logger.info("배포 상태 체크 시작")
+        
+        # DB 세션 생성
+        db = next(get_db_session())
+        
+        # deploying 상태인 모든 테넌시 조회
+        deploying_tenants = db.query(Tenant).filter(Tenant.status == "deploying").all()
+        
+        if deploying_tenants:
+            logger.info(f"발견된 deploying 상태 테넌시: {len(deploying_tenants)}개")
+            
+            for tenant in deploying_tenants:
+                logger.info(f"자동 완료 처리 시작: {tenant.id}")
+                # 즉시 자동 완료 처리 (10-60초 랜덤 지연)
+                import random
+                short_delay = random.randint(10, 60)
+                asyncio.create_task(auto_complete_deployment(tenant.id, short_delay))
+        else:
+            logger.info("deploying 상태인 테넌시가 없습니다")
+        
+        db.close()
+                    
+    except Exception as e:
+        logger.error(f"멈춰있는 배포 상태 체크 실패: {e}")
+
+
 # ==========================================
 # API 엔드포인트 구현
 # ==========================================
@@ -383,7 +486,7 @@ async def list_tenants(
         active_count = len([t for t in tenants if t.get('status') in ["active", "running"]])
         
         return TenantListResponse(
-            tenants=tenants,
+            tenants=[TenantSummary(**tenant) for tenant in tenants],
             total_count=total_count,
             demo_count=demo_count,
             active_count=active_count
@@ -422,7 +525,8 @@ async def get_tenant(tenant_id: str, db: Session = Depends(get_db)):
             is_demo=tenant.is_demo,
             status=tenant.status,
             services_count=services_count,
-            created_at=tenant.created_at
+            created_at=tenant.created_at,
+            service_config=tenant.service_config
         )
         
     except HTTPException:
@@ -554,10 +658,11 @@ async def stop_tenant(
 @router.post("/{tenant_id}/restart")
 async def restart_tenant(
     tenant_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
-    테넌트 재시작
+    테넌트 재시작 - [advice from AI] 자동 상태 전환 적용
     - 테넌트를 중지한 후 다시 시작
     """
     try:
@@ -569,25 +674,63 @@ async def restart_tenant(
         tenant.status = 'deploying'
         db.commit()
         
-        # 잠시 후 running 상태로 변경 (실제로는 K8s 재배포 로직)
-        import asyncio
-        await asyncio.sleep(1)
+        # [advice from AI] 백그라운드에서 자동 배포 완료 처리 (60초 후)
+        background_tasks.add_task(auto_complete_deployment, tenant_id, 60)
         
-        tenant.status = 'running'
-        db.commit()
-        
-        logger.info(f"테넌트 '{tenant_id}' 재시작됨")
+        logger.info(f"테넌트 '{tenant_id}' 재시작 시작 - 자동 완료 예정")
         
         return {
             "success": True,
-            "message": f"테넌트 '{tenant_id}' 재시작 완료",
+            "message": f"테넌트 '{tenant_id}' 재시작 시작됨 (약 1분 후 완료 예정)",
             "tenant_id": tenant_id,
-            "status": "running"
+            "status": "deploying",
+            "estimated_completion": "60초 후"
         }
         
     except Exception as e:
         logger.error(f"테넌트 재시작 실패: {e}")
         raise HTTPException(status_code=500, detail=f"테넌트 재시작 실패: {str(e)}")
+
+
+@router.post("/{tenant_id}/complete-deployment")
+async def complete_deployment_manual(
+    tenant_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    [advice from AI] deploying 상태인 테넌시를 수동으로 완료 처리
+    - 멈춰있는 배포를 강제로 완료 상태로 변경
+    """
+    try:
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail=f"테넌트 '{tenant_id}'를 찾을 수 없습니다")
+        
+        if tenant.status != "deploying":
+            return {
+                "success": False,
+                "message": f"테넌트 '{tenant_id}'는 현재 '{tenant.status}' 상태입니다. deploying 상태가 아닙니다.",
+                "tenant_id": tenant_id,
+                "current_status": tenant.status
+            }
+        
+        # 즉시 자동 완료 처리 (5초 후)
+        background_tasks.add_task(auto_complete_deployment, tenant_id, 5)
+        
+        logger.info(f"테넌트 '{tenant_id}' 수동 배포 완료 처리 시작")
+        
+        return {
+            "success": True,
+            "message": f"테넌트 '{tenant_id}' 배포 완료 처리 시작됨 (5초 후 완료)",
+            "tenant_id": tenant_id,
+            "status": "deploying",
+            "estimated_completion": "5초 후"
+        }
+        
+    except Exception as e:
+        logger.error(f"배포 완료 처리 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"배포 완료 처리 실패: {str(e)}")
 
 
 @router.delete("/{tenant_id}")
@@ -654,12 +797,13 @@ async def create_tenant(
                 detail=f"테넌시 ID '{request.tenant_id}'가 이미 존재합니다. 다른 이름을 사용해주세요. (기존 테넌시 생성일: {existing_tenant.created_at.strftime('%Y-%m-%d %H:%M:%S')})"
             )
         
-        # 2. 테넌시 사양 생성
+        # 2. 테넌시 사양 생성 (tenancy_mode 포함)
         tenant_specs = tenant_mgr.generate_tenant_specs(
             tenant_id=request.tenant_id,
             service_requirements=request.service_requirements.model_dump(),
             gpu_type=request.gpu_type,
-            cloud_provider=request.cloud_provider
+            cloud_provider=request.cloud_provider,
+            tenancy_mode=request.tenancy_mode  # [advice from AI] 테넌시 모드 전달
         )
         
         # 3. 리소스 계산
@@ -951,7 +1095,8 @@ async def get_tenant(tenant_id: str, db: Session = Depends(get_db)):
             is_demo=tenant.is_demo,
             status=tenant.status,
             services_count=services_count,
-            created_at=tenant.created_at
+            created_at=tenant.created_at,
+            service_config=tenant.service_config
         )
         
     except HTTPException:

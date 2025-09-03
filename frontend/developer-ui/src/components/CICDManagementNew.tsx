@@ -38,9 +38,9 @@ import {
 } from '@mui/icons-material';
 
 // 컴포넌트 임포트
-import ImageRegistration from './cicd/ImageRegistration.tsx';
-import GitHubIntegration from './cicd/GitHubIntegration.tsx';
-import DeploymentPipeline from './cicd/DeploymentPipeline.tsx';
+import ImageRegistration from './cicd/ImageRegistration';
+import GitHubIntegration from './cicd/GitHubIntegration';
+import DeploymentPipeline from './cicd/DeploymentPipeline';
 
 // TabPanel 컴포넌트
 interface TabPanelProps {
@@ -138,27 +138,19 @@ const CICDManagementNew: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = fa
           }}
         >
           <Tab 
-            label="📦 이미지 라이프사이클" 
-            icon={<DockerIcon />} 
-            iconPosition="start"
+            label="📦 이미지 라이프사이클"
             sx={{ gap: 1 }}
           />
           <Tab 
-            label="🔗 소스 연동 & 자동화" 
-            icon={<GitHubIcon />} 
-            iconPosition="start"
+            label="🔗 소스 연동 & 자동화"
             sx={{ gap: 1 }}
           />
           <Tab 
-            label="🚀 배포 관리" 
-            icon={<BuildIcon />} 
-            iconPosition="start"
+            label="🚀 배포 관리"
             sx={{ gap: 1 }}
           />
           <Tab 
-            label="⚙️ 레지스트리 & 정책" 
-            icon={<SettingsIcon />} 
-            iconPosition="start"
+            label="⚙️ 레지스트리 & 정책"
             sx={{ gap: 1 }}
           />
         </Tabs>

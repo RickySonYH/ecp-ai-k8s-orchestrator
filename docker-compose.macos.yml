@@ -10,6 +10,7 @@ services:
       - ./frontend/developer-ui/src:/app/src:rw
       - ./frontend/developer-ui/public:/app/public:rw
       - ./frontend/developer-ui/package.json:/app/package.json:ro
+      - ./frontend/developer-ui/tsconfig.json:/app/tsconfig.json:ro
       - frontend-node-modules:/app/node_modules
     environment:
       # macOS Docker Desktop HMR 최적화 설정

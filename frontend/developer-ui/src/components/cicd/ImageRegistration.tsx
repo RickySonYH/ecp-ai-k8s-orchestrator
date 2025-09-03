@@ -247,7 +247,7 @@ const ImageRegistration: React.FC = () => {
   };
 
   const handleDeleteImage = async (serviceName: string) => {
-    if (!confirm(`서비스 '${serviceName}'를 비활성화하시겠습니까?`)) return;
+    if (!window.confirm(`서비스 '${serviceName}'를 비활성화하시겠습니까?`)) return;
 
     try {
       setLoading(true);

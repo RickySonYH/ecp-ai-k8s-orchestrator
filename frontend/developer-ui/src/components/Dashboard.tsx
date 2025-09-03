@@ -60,11 +60,13 @@ import {
   Monitor as MonitoringIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-// [advice from AI] 임시 주석 처리 - 빠른 개발을 위해
-// import { statisticsService, StatisticsOverview, ImageStatistics, ServiceStatistics, TenantStatistics, ResourceStatistics } from '../services/StatisticsService';
+import { StatisticsService, StatisticsOverview, ImageStatistics, ServiceStatistics, TenantStatistics, ResourceStatistics } from '../services/StatisticsService';
 // import DashboardCharts from './DashboardCharts';
 
-// [advice from AI] 실제 데이터 기반 인터페이스
+const statisticsService = new StatisticsService();
+
+// [advice from AI] StatisticsService에서 타입을 import하여 일관성 유지
+
 interface DashboardData {
   overview: StatisticsOverview | null;
   images: ImageStatistics | null;
@@ -209,10 +211,10 @@ const Dashboard: React.FC = () => {
                 </Typography>
               </Box>
               <Typography variant="h3" component="div" sx={{ fontWeight: 'bold', color: theme.palette.primary.main }}>
-                {overview?.total_tenants || 0}
+                {overview?.tenants_by_preset?.reduce((sum, preset) => sum + preset.count, 0) || 0}
               </Typography>
               <Typography variant="body2" color="textSecondary">
-                활성: {overview?.active_tenants || 0}개
+                프리셋별 분포
               </Typography>
             </CardContent>
           </MetricCard>
@@ -230,10 +232,10 @@ const Dashboard: React.FC = () => {
                 </Typography>
               </Box>
               <Typography variant="h3" component="div" sx={{ fontWeight: 'bold', color: theme.palette.success.main }}>
-                {overview?.total_services || 0}
+                {services?.total_services || 0}
               </Typography>
               <Typography variant="body2" color="textSecondary">
-                배포됨: {overview?.deployed_services || 0}개
+                활성: {services?.active_services || 0}개
               </Typography>
             </CardContent>
           </MetricCard>
@@ -254,7 +256,7 @@ const Dashboard: React.FC = () => {
                 {images?.total_images || 0}
               </Typography>
               <Typography variant="body2" color="textSecondary">
-                크기: {images ? Math.round(images.total_size_mb / 1024) : 0}GB
+                활성: {images?.active_images || 0}개
               </Typography>
             </CardContent>
           </MetricCard>
@@ -272,10 +274,10 @@ const Dashboard: React.FC = () => {
                 </Typography>
               </Box>
               <Typography variant="h3" component="div" sx={{ fontWeight: 'bold', color: theme.palette.warning.main }}>
-                {overview?.resource_usage.total_gpu || 0}
+                {resources?.total_resources?.gpu || 0}
               </Typography>
               <Typography variant="body2" color="textSecondary">
-                GPU / {overview?.resource_usage.total_cpu || '0m'} CPU
+                GPU / {resources?.total_resources?.cpu || 0} CPU
               </Typography>
             </CardContent>
           </MetricCard>
@@ -317,7 +319,7 @@ const Dashboard: React.FC = () => {
                 🖼️ 이미지 타입별 분포
               </Typography>
               <Box mt={2}>
-                {images && Object.entries(images.by_type).map(([type, stats]) => (
+                {images && images.category_stats && Object.entries(images.category_stats).map(([type, count]) => (
                   <Box key={type} display="flex" justifyContent="space-between" alignItems="center" mb={1}>
                     <Chip 
                       label={type.toUpperCase()} 
@@ -325,7 +327,7 @@ const Dashboard: React.FC = () => {
                       color={type === 'gpu' ? 'error' : type === 'application' ? 'primary' : 'default'}
                     />
                     <Typography variant="body2">
-                      {stats.count}개 ({Math.round(stats.total_size_mb / 1024)}GB)
+                      {count}개
                     </Typography>
                   </Box>
                 ))}
@@ -342,24 +344,24 @@ const Dashboard: React.FC = () => {
                 🔧 서비스 배포 현황 (CICD 기준)
               </Typography>
               <Grid container spacing={2} mt={2}>
-                {services && Object.entries(services.service_details)
-                  .filter(([_, stats]) => stats.deployed > 0)
-                  .map(([service, stats]) => (
+                {services && services.service_distribution && Object.entries(services.service_distribution)
+                  .filter(([_, count]) => count > 0)
+                  .map(([service, count]) => (
                     <Grid item xs={12} sm={6} md={4} key={service}>
                       <Paper sx={{ p: 2, textAlign: 'center' }}>
                         <Typography variant="subtitle2" color="primary" gutterBottom>
                           {service.toUpperCase()}
                         </Typography>
                         <Typography variant="h6" color="success.main">
-                          {stats.deployed}개 배포
+                          {count}개 배포
                         </Typography>
                         <Typography variant="body2" color="textSecondary">
-                          {stats.tenants}개 테넌시에서 사용
+                          활성 서비스
                         </Typography>
                       </Paper>
                     </Grid>
                   ))}
-                {services && Object.values(services.service_details).every(stats => stats.deployed === 0) && (
+                {services && services.service_distribution && Object.values(services.service_distribution).every(count => count === 0) && (
                   <Grid item xs={12}>
                     <Alert severity="info">
                       현재 배포된 서비스가 없습니다.
@@ -372,10 +374,10 @@ const Dashboard: React.FC = () => {
         </Grid>
       </Grid>
 
-      {/* 차트 섹션 */}
-      {data.overview && data.images && data.services && data.tenants && data.resources && (
+      {/* 차트 섹션 - 임시 비활성화 */}
+      {/* {data.overview && data.images && data.services && data.tenants && data.resources && (
         <DashboardCharts data={data} />
-      )}
+      )} */}
     </Box>
   );
 };

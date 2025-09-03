@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { ServiceRequirements } from '../services/TenantDataService';
 import {
   TenantCreateRequest,
   TenantCreateResponse,

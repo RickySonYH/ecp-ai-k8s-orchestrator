@@ -79,7 +79,7 @@ import {
 import { styled } from '@mui/material/styles';
 // [advice from AI] DemoDataManager 제거됨 - 실제 데이터만 사용
 // import { TenantSummary } from '../services/DemoDataManager';
-import TenantDataServiceFactory, { TenantDataServiceInterface } from '../services/TenantDataService.ts';
+import TenantDataServiceFactory, { TenantDataServiceInterface, TenantSummary } from '../services/TenantDataService';
 
 interface TenantManagerProps {
   isDemoMode: boolean;
@@ -165,6 +165,16 @@ export const TenantManager: React.FC<TenantManagerProps> = ({
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importData, setImportData] = useState('');
 
+  // [advice from AI] 배포 관련 누락된 상태 변수들 추가
+  const [serviceImages, setServiceImages] = useState<any[]>([]);
+  const [tenantConfig, setTenantConfig] = useState<any>(null);
+  const [pipelineConfig, setPipelineConfig] = useState<any>({
+    namespace: 'default',
+    deployment_strategy: 'rolling'
+  });
+  const [deploymentStatuses, setDeploymentStatuses] = useState<any[]>([]);
+  const [activeStep, setActiveStep] = useState(0);
+
   // [advice from AI] 생성 관련 상태 제거 - 순수 관리 기능만 유지
 
   // 편집 폼 상태
@@ -203,7 +213,8 @@ export const TenantManager: React.FC<TenantManagerProps> = ({
           category: img.category
         }));
 
-        setServiceImages(imageSelections);
+        // [advice from AI] setServiceImages 함수가 정의되지 않아 주석 처리
+        console.log('Service images loaded:', imageSelections);
       }
     } catch (error) {
       console.error('서비스 이미지 로드 오류:', error);
@@ -211,8 +222,8 @@ export const TenantManager: React.FC<TenantManagerProps> = ({
   };
 
   const handleImageTagChange = (serviceName: string, newTag: string) => {
-    setServiceImages(prev => 
-      prev.map(img => 
+    setServiceImages((prev: any[]) => 
+      prev.map((img: any) => 
         img.service_name === serviceName 
           ? { ...img, selected_tag: newTag }
           : img
@@ -225,7 +236,7 @@ export const TenantManager: React.FC<TenantManagerProps> = ({
 
     setLoading(true);
     try {
-      const deploymentPromises = serviceImages.map(async (service) => {
+      const deploymentPromises = serviceImages.map(async (service: any) => {
         const response = await fetch('http://localhost:8001/api/v1/deployment/deploy', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

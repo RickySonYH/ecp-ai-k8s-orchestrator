@@ -34,11 +34,11 @@ import {
 } from '@mui/icons-material';
 
 // 설정 섹션별 컴포넌트 import
-import { GitSettings } from './settings/GitSettings.tsx';
-import { CICDSettings } from './settings/CICDSettings.tsx';
-import { KubernetesSettings } from './settings/KubernetesSettings.tsx';
-import { MonitoringSettings } from './settings/MonitoringSettings.tsx';
-import { SecuritySettings } from './settings/SecuritySettings.tsx';
+import { GitSettings } from './settings/GitSettings';
+import { CICDSettings } from './settings/CICDSettings';
+import { KubernetesSettings } from './settings/KubernetesSettings';
+import { MonitoringSettings } from './settings/MonitoringSettings';
+import { SecuritySettings } from './settings/SecuritySettings';
 
 // 설정 타입 정의
 export interface GlobalSettings {
@@ -177,13 +177,25 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ isDemoMode, onDemoMode
         cpu: '1000m',
         memory: '8Gi',
         storage: '100Gi'
-      }
+      },
+      deploymentMethod: 'k8s-simulator',
+      deploymentEndpoint: 'http://localhost:6360/api',
+      deploymentAuth: {
+        type: 'bearer',
+        token: ''
+      },
+      validationStrict: true,
+      useSimulatorForRealMode: true
     },
     monitoring: {
       prometheusUrl: 'https://prometheus.ecp-ai.com',
       grafanaUrl: 'https://grafana.ecp-ai.com',
       alertChannels: ['slack', 'email'],
-      metricsRetention: 30
+      metricsRetention: 30,
+      monitoringStack: 'prometheus-grafana',
+      dataCollectionInterval: 30,
+      slaTarget: 99.5,
+      realTimeMonitoring: true
     },
     security: {
       vulnerabilityScanner: 'trivy',
@@ -210,10 +222,19 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ isDemoMode, onDemoMode
   };
 
   const handleSettingsChange = (section: keyof GlobalSettings, newSettings: any) => {
-    setSettings(prev => ({
-      ...prev,
-      [section]: { ...prev[section], ...newSettings }
-    }));
+    setSettings(prev => {
+      const currentSection = prev[section];
+      if (typeof currentSection === 'object' && currentSection !== null) {
+        return {
+          ...prev,
+          [section]: { ...currentSection, ...newSettings }
+        };
+      }
+      return {
+        ...prev,
+        [section]: newSettings
+      };
+    });
   };
 
   return (

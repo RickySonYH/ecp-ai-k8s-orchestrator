@@ -197,6 +197,9 @@ export const getServiceDescription = (serviceName: string): string => {
   return serviceDescriptions[serviceName.toLowerCase()] || serviceName;
 };
 
+// [advice from AI] API 기본 URL 정의
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+
 // URL 생성 유틸리티
 export const createAPIUrl = (endpoint: string): string => {
   return `${API_BASE_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;

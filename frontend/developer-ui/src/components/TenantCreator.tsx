@@ -107,7 +107,7 @@ const MetricChip = styled(Chip)(({ theme }) => ({
 export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, onTenantSaved, isDemoMode = false }) => {
   // 상태 관리
   const [tenantId, setTenantId] = useState('');
-  const [tenancyMode, setTenancyMode] = useState<'small' | 'large'>('small');
+  const [tenancyMode, setTenancyMode] = useState<'small' | 'large'>('large');  // [advice from AI] 기본값을 대규모로 설정
   // [advice from AI] 클라우드 제공업체 선택을 매니페스트 생성 후로 이동
   const [services, setServices] = useState<ServiceRequirements>({
     callbot: 0,
@@ -784,44 +784,12 @@ export const TenantCreator: React.FC<TenantCreatorProps> = ({ onTenantCreated, o
               )}
             </Grid>
             
-            <Grid item xs={12} md={4}>
-              <FormControl fullWidth>
-                <InputLabel>테넌시 모드</InputLabel>
-                <Select
-                  value={tenancyMode}
-                  label="테넌시 모드"
-                  onChange={(e) => setTenancyMode(e.target.value as any)}
-                  disabled={loading}
-                >
-                  <MenuItem value="small">🏢 소규모 테넌시 (공용 인프라 활용)</MenuItem>
-                  <MenuItem value="large">🏭 대규모 테넌시 (완전 독립 배포)</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
+
             
             {/* [advice from AI] 클라우드 제공업체 선택 제거 - 매니페스트 생성 후에 선택하도록 변경 */}
           </Grid>
 
-          {/* 테넌시 모드 설명 */}
-          {tenancyMode === 'small' ? (
-            <Alert severity="info" sx={{ mb: 3 }}>
-              <AlertTitle>🏢 소규모 테넌시 모드</AlertTitle>
-              <Typography variant="body2">
-                공용 인프라(API Gateway, PostgreSQL, VectorDB, Auth Service, NAS)를 활용하여 비용 효율적인 배포를 제공합니다.
-                <br />
-                선택한 메인 서비스와 필요한 처리 엔진(STT, TTS, NLP, AICM)만 전용 리소스로 배포됩니다.
-              </Typography>
-            </Alert>
-          ) : (
-            <Alert severity="warning" sx={{ mb: 3 }}>
-              <AlertTitle>🏭 대규모 테넌시 모드</AlertTitle>
-              <Typography variant="body2">
-                완전 독립적인 테넌시 환경을 구성합니다. 모든 서비스와 인프라가 전용 리소스로 배포되어 최대 성능과 보안을 제공합니다.
-                <br />
-                높은 리소스 요구사항과 비용이 발생할 수 있습니다.
-              </Typography>
-            </Alert>
-          )}
+
 
           {/* [advice from AI] 서비스 설정 - 개선된 레이아웃으로 박스 정렬 */}
           <Grid container spacing={3} sx={{ mb: 3 }}>

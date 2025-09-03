@@ -20,6 +20,11 @@ COPY package*.json ./
 RUN npm ci --only=production=false && \
     npm cache clean --force
 
+# [advice from AI] 소스 코드 복사 (볼륨 마운트 전 기본 파일들)
+COPY src/ ./src/
+COPY public/ ./public/
+COPY tsconfig.json ./
+
 # 개발용 글로벌 패키지 설치
 RUN npm install -g \
     @typescript-eslint/eslint-plugin \

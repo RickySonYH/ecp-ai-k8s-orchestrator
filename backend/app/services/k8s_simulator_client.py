@@ -30,7 +30,7 @@ class K8sSimulatorClient:
     
     async def deploy_manifest(
         self, 
-        manifest_content: str, 
+        manifest_content, 
         tenant_id: str = "default",
         deployment_mode: str = "production",
         namespace: str = "default-ecp-ai"
@@ -38,7 +38,7 @@ class K8sSimulatorClient:
         """매니페스트를 K8S Simulator에 배포
         
         Args:
-            manifest_content: YAML 매니페스트 내용
+            manifest_content: YAML 매니페스트 내용 (str 또는 dict)
             tenant_id: 테넌트 ID
             deployment_mode: 배포 모드 (production/demo)
             
@@ -48,16 +48,23 @@ class K8sSimulatorClient:
         try:
             logger.info(f"Deploying manifest for tenant {tenant_id} to K8S Simulator")
             
+            # [advice from AI] manifest_content가 dict인 경우 문자열로 변환
+            if isinstance(manifest_content, dict):
+                # dict의 모든 값들을 연결하여 하나의 YAML 문자열로 만들기
+                manifest_yaml = "\n---\n".join(manifest_content.values())
+            else:
+                manifest_yaml = manifest_content
+            
             response = await self.client.post(
                 f"{self.base_url}/k8s/manifest/deploy",
                 json={
-                    "manifest": manifest_content,
+                    "manifest": manifest_yaml,
                     "tenant_id": tenant_id,
                     "deployment_mode": deployment_mode
                 },
                 headers={
                     "Content-Type": "application/json",
-                    "User-Agent": "ECP-AI-Orchestrator/1.51"
+                    "User-Agent": "ECP-AI-Orchestrator/1.54"
                 }
             )
             response.raise_for_status()
@@ -78,21 +85,27 @@ class K8sSimulatorClient:
             logger.error(f"Unexpected error during deployment: {e}")
             raise Exception(f"배포 중 오류 발생: {str(e)}")
     
-    async def parse_manifest(self, manifest_content: str, tenant_id: str) -> Dict[str, Any]:
+    async def parse_manifest(self, manifest_content, tenant_id: str) -> Dict[str, Any]:
         """매니페스트 파싱 및 검증
         
         Args:
-            manifest_content: YAML 매니페스트 내용
+            manifest_content: YAML 매니페스트 내용 (str 또는 dict)
             tenant_id: 테넌트 ID
             
         Returns:
             파싱 결과 및 리소스 정보
         """
         try:
+            # [advice from AI] manifest_content가 dict인 경우 문자열로 변환
+            if isinstance(manifest_content, dict):
+                manifest_yaml = "\n---\n".join(manifest_content.values())
+            else:
+                manifest_yaml = manifest_content
+                
             response = await self.client.post(
                 f"{self.base_url}/k8s/manifest/parse",
                 json={
-                    "manifest": manifest_content,
+                    "manifest": manifest_yaml,
                     "tenant_id": tenant_id
                 }
             )
@@ -267,9 +280,13 @@ class K8sSimulatorClient:
             연결 상태 (True: 정상, False: 오류)
         """
         try:
-            response = await self.client.get(f"{self.base_url}/", timeout=5.0)
-            return response.status_code == 200
-        except:
+            response = await self.client.get(f"{self.base_url}/health", timeout=5.0)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("status") == "healthy"
+            return False
+        except Exception as e:
+            logger.warning(f"Health check failed: {e}")
             return False
     
     async def get_service_status(
@@ -341,6 +358,91 @@ class K8sSimulatorClient:
                 "pods": [],
                 "deploymentStatus": "Unknown",
                 "lastUpdated": datetime.utcnow().isoformat()
+            }
+
+    async def get_tenant_monitoring_data(self, tenant_id: str) -> Dict[str, Any]:
+        """[advice from AI] 특정 테넌트의 실시간 모니터링 데이터 조회
+        
+        Args:
+            tenant_id: 테넌트 ID
+            
+        Returns:
+            테넌트별 CPU, 메모리, GPU 사용률 등 모니터링 데이터
+        """
+        try:
+            # 시뮬레이터에서 전체 모니터링 데이터 조회
+            response = await self.client.get(f"{self.base_url}/monitoring/health")
+            response.raise_for_status()
+            
+            health_data = response.json()
+            services = health_data.get("services", {})
+            
+            # 테넌트 관련 서비스들 찾기 (네임스페이스 기반)
+            tenant_services = {}
+            tenant_namespace = f"{tenant_id}-ecp-ai"
+            
+            for service_name, service_data in services.items():
+                # 테넌트 네임스페이스와 관련된 서비스인지 확인
+                if tenant_id in service_name or tenant_namespace in service_name:
+                    tenant_services[service_name] = service_data
+            
+            # 테넌트별 집계 메트릭 계산
+            if tenant_services:
+                total_cpu = sum(s.get("cpu", {}).get("usage_percent", 0) for s in tenant_services.values())
+                total_memory = sum(s.get("memory", {}).get("usage_percent", 0) for s in tenant_services.values())
+                avg_response_time = sum(s.get("network", {}).get("response_time_ms", 0) for s in tenant_services.values()) / len(tenant_services)
+                avg_error_rate = sum(s.get("network", {}).get("error_rate_percent", 0) for s in tenant_services.values()) / len(tenant_services)
+                
+                # GPU 사용률 계산 (AI 서비스 기준)
+                gpu_usage = 0
+                ai_services = [s for name, s in tenant_services.items() if any(x in name.lower() for x in ['callbot', 'chatbot', 'advisor'])]
+                if ai_services:
+                    gpu_usage = sum(s.get("cpu", {}).get("usage_percent", 0) * 0.8 for s in ai_services) / len(ai_services)
+                
+                return {
+                    "tenant_id": tenant_id,
+                    "cpu_usage": round(total_cpu / len(tenant_services), 1),
+                    "memory_usage": round(total_memory / len(tenant_services), 1),
+                    "gpu_usage": round(gpu_usage, 1),
+                    "response_time": round(avg_response_time, 1),
+                    "error_rate": round(avg_error_rate, 4),
+                    "service_count": len(tenant_services),
+                    "status": "running" if all(s.get("health", {}).get("status") == "healthy" for s in tenant_services.values()) else "warning",
+                    "timestamp": health_data.get("timestamp")
+                }
+            else:
+                # 테넌트 서비스가 없는 경우
+                return {
+                    "tenant_id": tenant_id,
+                    "cpu_usage": 0,
+                    "memory_usage": 0,
+                    "gpu_usage": 0,
+                    "response_time": 0,
+                    "error_rate": 0,
+                    "service_count": 0,
+                    "status": "stopped",
+                    "timestamp": datetime.now().isoformat()
+                }
+            
+        except httpx.HTTPError as e:
+            logger.error(f"Tenant monitoring data retrieval failed for {tenant_id}: {e}")
+            return {
+                "tenant_id": tenant_id,
+                "cpu_usage": 0,
+                "memory_usage": 0,
+                "gpu_usage": 0,
+                "status": "unknown",
+                "message": f"모니터링 데이터 조회 실패: {str(e)}"
+            }
+        except Exception as e:
+            logger.error(f"Unexpected error getting tenant monitoring data: {e}")
+            return {
+                "tenant_id": tenant_id,
+                "cpu_usage": 0,
+                "memory_usage": 0,
+                "gpu_usage": 0,
+                "status": "error",
+                "message": f"모니터링 데이터 조회 중 오류: {str(e)}"
             }
 
     async def close(self):

@@ -429,7 +429,8 @@ class TenantManager:
                              tenant_id: str,
                              service_requirements: Dict[str, int],
                              gpu_type: str = "auto",
-                             cloud_provider: str = "iaas") -> TenantSpecs:
+                             cloud_provider: str = "iaas",
+                             tenancy_mode: str = "large") -> TenantSpecs:  # [advice from AI] tenancy_mode 매개변수 추가
         """
         테넌시 사양 자동 생성
         실제 가중치 반영 및 GPU 타입 자동 선택
@@ -439,7 +440,8 @@ class TenantManager:
             tenant_id=tenant_id,
             service_requirements=service_requirements,
             gpu_type=gpu_type,
-            cloud_provider=cloud_provider  # [advice from AI] 클라우드 제공업체 로깅 추가
+            cloud_provider=cloud_provider,  # [advice from AI] 클라우드 제공업체 로깅 추가
+            tenancy_mode=tenancy_mode  # [advice from AI] 테넌시 모드 로깅 추가
         )
         
         # 프리셋 자동 감지
@@ -525,6 +527,7 @@ class TenantManager:
         tenant_specs = TenantSpecs(
             tenant_id=tenant_id,
             preset=preset_enum,
+            tenancy_mode=tenancy_mode,  # [advice from AI] 테넌시 모드 추가
             gpu_type=gpu_type_enum,
             cloud_provider=cloud_provider_enum,  # [advice from AI] 클라우드 제공업체 추가
             total_channels=total_channels,
@@ -539,6 +542,7 @@ class TenantManager:
             "테넌시 사양 생성 완료",
             tenant_id=tenant_id,
             preset=preset,
+            tenancy_mode=tenancy_mode,  # [advice from AI] 테넌시 모드 로깅 추가
             gpu_type=optimal_gpu_type,
             gpu_count=gpu_requirements["total"],
             cpu_cores=cpu_requirements["total"]

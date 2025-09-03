@@ -61,16 +61,16 @@ import {
 import { styled } from '@mui/material/styles';
 
 // 컴포넌트 임포트
-import { TenantCreator } from './components/TenantCreator.tsx';
-import { TenantDashboard } from './components/TenantDashboard.tsx';
-import AdvancedMonitoring from './components/AdvancedMonitoring.tsx';
-import CICDManagement from './components/CICDManagement.tsx';
-import { SettingsTab } from './components/SettingsTab.tsx';
+import { TenantCreator } from './components/TenantCreator';
+import { TenantDashboard } from './components/TenantDashboard';
+import AdvancedMonitoring from './components/AdvancedMonitoring';
+import CICDManagement from './components/CICDManagement';
+import { SettingsTab } from './components/SettingsTab';
 // [advice from AI] ModeSelector 제거 - 모드 선택 기능 완전 삭제
-import NotificationCenter from './components/NotificationCenter.tsx';
+import NotificationCenter from './components/NotificationCenter';
 import { notificationService } from './services/NotificationService';
-import IntegratedDashboard from './components/IntegratedDashboard.tsx';
-import TenantDataServiceFactory, { TenantDataServiceInterface, SystemMetrics as ServiceSystemMetrics } from './services/TenantDataService.ts';
+import IntegratedDashboard from './components/IntegratedDashboard';
+import TenantDataServiceFactory, { TenantDataServiceInterface, SystemMetrics as ServiceSystemMetrics, TenantSummary } from './services/TenantDataService';
 
 // 타입 정의
 interface DeploymentStatus {
@@ -82,15 +82,7 @@ interface DeploymentStatus {
   created_at: string;
 }
 
-interface TenantSummary {
-  tenant_id: string;
-  name?: string;
-  status: string;
-  preset: string;
-  is_demo: boolean;
-  services_count: number;
-  created_at: string;
-}
+// [advice from AI] TenantSummary는 TenantDataService에서 임포트하므로 제거
 
 interface SystemMetrics {
   total_tenants: number;
@@ -379,7 +371,7 @@ function App() {
       const metrics: SystemMetrics = {
         total_tenants: tenantList.length,
         active_tenants: activeTenants.length,
-        total_services: tenantList.reduce((sum, tenant) => sum + tenant.services_count, 0),
+        total_services: tenantList.reduce((sum, tenant) => sum + (tenant.services_count || 0), 0),
         total_allocated_gpus: totalGpus,
         total_allocated_cpus: totalCpus,
         total_memory_allocated: `${totalMemoryGi}Gi`,
@@ -620,7 +612,7 @@ function App() {
 
           {/* 고급 모니터링 탭 */}
           <TabPanel value={currentTab} index={3}>
-            <AdvancedMonitoring isDemoMode={isDemoMode} />
+            <AdvancedMonitoring isDemoMode={false} />
           </TabPanel>
 
           <TabPanel value={currentTab} index={4}>
@@ -688,7 +680,7 @@ function App() {
             {selectedTenant && (
               <TenantDashboard 
                 tenantId={selectedTenant} 
-                onTenantDeleted={(tenantId) => {
+                onTenantDeleted={(tenantId: string) => {
                   handleTenantDeleted();
                   setDashboardPopupOpen(false);
                 }}

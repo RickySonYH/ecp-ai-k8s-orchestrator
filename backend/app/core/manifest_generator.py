@@ -249,7 +249,7 @@ class ManifestGenerator:
             manifests["90-configmap.yaml"] = self._generate_configmap(tenant_specs)
             
             # NetworkPolicy (네트워크 정책이 활성화된 경우)
-            manifests["91-networkpolicy.yaml"] = self._generate_network_policy(tenant_specs)
+            manifests["91-networkpolicy.yaml"] = self._generate_networkpolicy(tenant_specs)
             
             # Monitoring
             manifests["92-monitoring.yaml"] = self._generate_monitoring(tenant_specs)
