@@ -112,7 +112,7 @@ class DemoTenantDataService implements TenantDataServiceInterface {
   // [advice from AI] DemoDataManager 제거됨
   // private demoManager: DemoDataManager;
 
-  constructor(baseUrl: string = 'http://localhost:8001/api/v1') {
+  constructor(baseUrl: string = `${process.env.REACT_APP_API_BASE_URL}/api/v1`) {
     this.baseUrl = baseUrl;
     // [advice from AI] DemoDataManager 제거됨
     // this.demoManager = DemoDataManager.getInstance();
@@ -297,7 +297,7 @@ class DemoTenantDataService implements TenantDataServiceInterface {
 class ProductionTenantDataService implements TenantDataServiceInterface {
   private baseUrl: string;
 
-  constructor(baseUrl: string = 'http://localhost:8001/api/v1') {
+  constructor(baseUrl: string = `${process.env.REACT_APP_API_BASE_URL}/api/v1`) {
     this.baseUrl = baseUrl;
   }
 

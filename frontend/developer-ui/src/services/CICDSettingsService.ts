@@ -101,8 +101,8 @@ export interface DevToolsConfig {
 }
 
 class CICDSettingsService {
-  private baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8001';
-  private apiUrl = `${this.baseUrl}/api/v1/cicd`;
+  private baseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001'; // [advice from AI] 환경변수명 수정
+  private apiUrl = `${this.baseUrl}/api/v1/cicd`; // [advice from AI] CICD 설정 API 경로 최종 수정
 
   /**
    * 글로벌 설정 조회

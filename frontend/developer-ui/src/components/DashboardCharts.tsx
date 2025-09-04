@@ -54,11 +54,12 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({ statistics }) => {
     theme.palette.info.main
   ];
 
-  // 리소스 사용량 데이터 준비 - [advice from AI] overview 데이터 사용
+  // 리소스 사용량 데이터 준비 - [advice from AI] 테넌트가 없으면 리소스도 0으로 표시
   const prepareResourceData = () => {
     if (!statistics.overview?.resource_usage) return [];
     
     const resourceUsage = statistics.overview.resource_usage;
+    const totalTenants = statistics.overview.total_tenants || 0;
     
     // CPU 코어 수 계산
     const totalCpu = resourceUsage.total_cpu ? 
@@ -68,22 +69,47 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({ statistics }) => {
     const totalMemory = resourceUsage.total_memory ? 
       parseInt(resourceUsage.total_memory.replace('Mi', '')) / 1024 : 0;
     
+    // 테넌트가 없으면 모든 리소스 사용량을 0으로 표시
+    if (totalTenants === 0) {
+      return [
+        {
+          name: 'CPU (cores)',
+          total: 0, // 전체 용량: 0
+          allocated: 0, // 할당됨: 0
+          available: 0  // 사용가능: 0
+        },
+        {
+          name: 'Memory (GB)',
+          total: 0, // 전체 용량: 0
+          allocated: 0, // 할당됨: 0
+          available: 0  // 사용가능: 0
+        },
+        {
+          name: 'GPU',
+          total: 0, // 전체 용량: 0
+          allocated: 0, // 할당됨: 0
+          available: 0  // 사용가능: 0
+        }
+      ];
+    }
+    
+    // 테넌트가 있을 때만 실제 사용량 표시
     return [
       {
         name: 'CPU (cores)',
-        total: Math.round(totalCpu * 1.5), // 전체 용량 추정
+        total: Math.round(totalCpu * 1.5),
         allocated: Math.round(totalCpu),
         available: Math.round(totalCpu * 0.5)
       },
       {
         name: 'Memory (GB)',
-        total: Math.round(totalMemory * 1.3), // 전체 용량 추정
+        total: Math.round(totalMemory * 1.3),
         allocated: Math.round(totalMemory),
         available: Math.round(totalMemory * 0.3)
       },
       {
         name: 'GPU',
-        total: (resourceUsage.total_gpu || 0) + 5, // 전체 GPU 추정
+        total: (resourceUsage.total_gpu || 0) + 5,
         allocated: resourceUsage.total_gpu || 0,
         available: 5
       }
@@ -117,10 +143,17 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({ statistics }) => {
     ];
   };
 
-  // 이미지 타입 분포 데이터 준비 - [advice from AI] 기본값 제공
+  // 이미지 타입 분포 데이터 준비 - [advice from AI] 테넌트가 없으면 이미지도 0으로 표시
   const prepareImageTypeData = () => {
+    const totalTenants = statistics.overview?.total_tenants || 0;
+    
+    // 테넌트가 없으면 이미지도 배포되지 않은 상태이므로 빈 배열 반환
+    if (totalTenants === 0) {
+      return [];
+    }
+    
     if (!statistics.images?.category_stats) {
-      // 기본 이미지 타입 데이터
+      // 기본 이미지 타입 데이터 (테넌트가 있을 때만)
       return [
         { name: 'Main', value: 6 },
         { name: 'AI/NLP', value: 4 },

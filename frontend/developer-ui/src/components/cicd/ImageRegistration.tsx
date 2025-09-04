@@ -118,7 +118,7 @@ const ImageRegistration: React.FC = () => {
   const loadImages = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:8001/api/v1/cicd/list');
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/v1/cicd/list`);
       console.log('API 응답 상태:', response.status);
       if (response.ok) {
         const data = await response.json();
@@ -136,7 +136,7 @@ const ImageRegistration: React.FC = () => {
 
   const loadStats = async () => {
     try {
-      const response = await fetch('http://localhost:8001/api/v1/cicd/stats/overview');
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/v1/cicd/stats/overview`);
       console.log('통계 API 응답 상태:', response.status);
       if (response.ok) {
         const data = await response.json();
@@ -153,7 +153,7 @@ const ImageRegistration: React.FC = () => {
   const handleAddImage = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:8001/api/v1/cicd/register', {
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/v1/cicd/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -209,7 +209,7 @@ const ImageRegistration: React.FC = () => {
 
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:8001/api/v1/cicd/${editingImage.service_name}`, {
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/v1/cicd/${editingImage.service_name}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -251,7 +251,7 @@ const ImageRegistration: React.FC = () => {
 
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:8001/api/v1/cicd/${serviceName}`, {
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/v1/cicd/${serviceName}`, {
         method: 'DELETE',
       });
 

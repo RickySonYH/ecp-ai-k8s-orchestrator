@@ -108,7 +108,7 @@ services:
       
       # API 및 모니터링 설정
       - PROMETHEUS_ENABLED=true
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://frontend:3000
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://frontend:3000,http://rdc.rickyson.com:3002
       - API_V1_PREFIX=/api/v1
       - DOCS_URL=/docs
       - REDOC_URL=/redoc
@@ -162,15 +162,15 @@ services:
       dockerfile: Dockerfile
     container_name: ecp-frontend
     environment:
-      # API 연결 설정 (브라우저에서 접근)
-      - REACT_APP_API_BASE_URL=http://localhost:8001
-      - REACT_APP_WS_URL=ws://localhost:8001/ws
+            # API 연결 설정 (원격 접속 지원)
+      - REACT_APP_API_BASE_URL=http://rdc.rickyson.com:8001
+      - REACT_APP_WS_URL=ws://rdc.rickyson.com:8001/ws
       
       # ECP-AI UI 특화 설정
       - REACT_APP_SUPPORTED_GPU_TYPES=t4,v100,l40s
       - REACT_APP_TENANT_PRESETS=micro,small,medium,large
       - REACT_APP_SERVICES=callbot,chatbot,advisor,stt,tts,ta,qa
-      - REACT_APP_VERSION=1.54.0
+      - REACT_APP_VERSION=2.0.0
       - REACT_APP_TITLE=ECP-AI Kubernetes Orchestrator
       
       # 개발 환경 설정 (범용)

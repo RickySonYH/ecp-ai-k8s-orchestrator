@@ -778,14 +778,14 @@ const CICDManagementNew: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = fa
                       <TextField
                         fullWidth
                         label="Slack 웹훅 URL"
-                        value={monitoringConfig.slack_notifications.webhook_url}
-                                                 onChange={(e) => setMonitoringConfig((prev: MonitoringConfig) => ({ 
-                           ...prev, 
-                           slack_notifications: { 
-                             ...prev.slack_notifications, 
-                             webhook_url: e.target.value 
-                           } 
-                         }))}
+                        value={monitoringConfig?.slack_notifications?.webhook_url || ''} // [advice from AI] 안전한 접근을 위한 옵셔널 체이닝
+                        onChange={(e) => setMonitoringConfig((prev: MonitoringConfig) => ({ 
+                          ...prev, 
+                          slack_notifications: { 
+                            ...prev?.slack_notifications, // [advice from AI] 안전한 접근
+                            webhook_url: e.target.value 
+                          } 
+                        }))}
                         size="small"
                         sx={{ mb: 1 }}
                       />
@@ -793,14 +793,14 @@ const CICDManagementNew: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = fa
                       <FormControlLabel
                         control={
                           <Switch
-                            checked={monitoringConfig.slack_notifications.enabled}
-                                                         onChange={(e) => setMonitoringConfig((prev: MonitoringConfig) => ({ 
-                               ...prev, 
-                               slack_notifications: { 
-                                 ...prev.slack_notifications, 
-                                 enabled: e.target.checked 
-                               } 
-                             }))}
+                            checked={monitoringConfig?.slack_notifications?.enabled || false} // [advice from AI] 안전한 접근
+                            onChange={(e) => setMonitoringConfig((prev: MonitoringConfig) => ({ 
+                              ...prev, 
+                              slack_notifications: { 
+                                ...prev?.slack_notifications, // [advice from AI] 안전한 접근
+                                enabled: e.target.checked 
+                              } 
+                            }))}
                           />
                         }
                         label="Slack 알림 활성화"
@@ -816,12 +816,12 @@ const CICDManagementNew: React.FC<{ isDemoMode?: boolean }> = ({ isDemoMode = fa
                     />
                     <Chip 
                       label="Slack 알림" 
-                      color={monitoringConfig.slack_notifications.enabled ? "success" : "default"}
+                      color={monitoringConfig?.slack_notifications?.enabled ? "success" : "default"} // [advice from AI] 안전한 접근
                       size="small"
                     />
                     <Chip 
                       label="Email 알림" 
-                      color={monitoringConfig.email_notifications.enabled ? "success" : "default"}
+                      color={monitoringConfig?.email_notifications?.enabled ? "success" : "default"} // [advice from AI] 안전한 접근
                       size="small"
                     />
                   </Box>

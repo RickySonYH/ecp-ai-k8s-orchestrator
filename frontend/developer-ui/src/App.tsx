@@ -459,7 +459,7 @@ function App() {
             </Tooltip>
             
             <Typography variant="body2" sx={{ ml: 2 }}>
-              Developer Console v1.54
+              Developer Console v{process.env.REACT_APP_VERSION || '2.0.0'}
             </Typography>
           </Toolbar>
         </StyledAppBar>

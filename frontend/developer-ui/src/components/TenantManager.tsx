@@ -194,7 +194,7 @@ export const TenantManager: React.FC<TenantManagerProps> = ({
 
   const loadServiceImages = async (serviceRequirements: any) => {
     try {
-      const response = await fetch('http://localhost:8001/api/v1/cicd/list');
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/v1/cicd/list`);
       if (response.ok) {
         const data = await response.json();
         
@@ -237,7 +237,7 @@ export const TenantManager: React.FC<TenantManagerProps> = ({
     setLoading(true);
     try {
       const deploymentPromises = serviceImages.map(async (service: any) => {
-        const response = await fetch('http://localhost:8001/api/v1/deployment/deploy', {
+        const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/v1/deployment/deploy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

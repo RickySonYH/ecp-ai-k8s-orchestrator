@@ -255,10 +255,12 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS 설정
+# CORS 설정 [advice from AI] 환경변수 기반으로 수정
+import os
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001,http://localhost:3002").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
